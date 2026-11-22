@@ -15,7 +15,9 @@ npm start
 
 代码实现和只读审阅均使用 `gpt-6.2-sol`，推理强度为 `medium`。Codex 实现轮使用本机 CLI 登录，Windows 上使用 MXC 工作区沙箱。OpenCode 通过官方 OpenAI 接口认证。可以在启动评测台前用 `VIBE_BENCH_CODEX_BIN` 或 `VIBE_BENCH_OPENCODE_BIN` 指定可执行文件路径。[本地评测台](http://127.0.0.1:4317) · [Windows 沙箱文档](https://learn.chatgpt.com/docs/windows/windows-sandbox)
 
-OpenCode 和审阅轮使用项目 API 密钥。Windows 用户可在 `%LOCALAPPDATA%\VibeAgentBench\openai-api-key` 保存密钥。审阅轮也支持启动环境中的 `VIBE_BENCH_OPENAI_API_KEY` 并优先采用，缺少项目密钥时使用本机 Codex CLI 登录。API 请求失败会显示在对应结果中。
+OpenCode 和审阅轮优先读取启动环境中的 `VIBE_BENCH_OPENAI_API_KEY`。Windows 用户也可在 `%LOCALAPPDATA%\VibeAgentBench\openai-api-key` 保存密钥。缺少项目密钥时，审阅轮使用本机 Codex CLI 登录。API 请求失败会显示在对应结果中。
+
+在 GitHub Codespaces 开发时，可在仓库的 **Settings → Secrets and variables → Codespaces** 添加同名 Secret。新建或重启 Codespace 后，它会成为开发环境变量。 [GitHub Codespaces Secret 文档](https://docs.github.com/en/codespaces/managing-codespaces-for-your-organization/managing-development-environment-secrets-for-your-repository-or-organization)
 
 「运行演示」使用固定参考实现验证代码规范、服务启动、API、页面联调和测试辨别力，无需模型凭据。每轮运行的报告、代码差异、日志与截图保存在 `runs/<运行 ID>/`。实现和审阅各附一份配置，记录请求的模型、推理强度、提供方和认证方式。API 审阅另附响应状态及返回的模型信息。点击证据可预览，点击「发起复测」会从同一份初始样例重新开始。
 
