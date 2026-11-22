@@ -4,12 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#fbf6f7">
-  <meta name="description" content="从本地项目生成 OpenCode 用例，审核后执行并查看每一步的证据。">
-  <title>用例工作台 · Vibe Agent Bench</title>
+  <meta name="description" content="在同一工作台运行项目用例和内置评测，查看运行过程与验收证据。">
+  <title>评测工作台 · Vibe Agent Bench</title>
   <link rel="stylesheet" href="/workbench.css">
   <link rel="stylesheet" href="/run-visualization.css">
   <link rel="stylesheet" href="/workbench-highlight.css">
+  <link rel="stylesheet" href="/evidence-preview.css">
+  <link rel="stylesheet" href="/model-settings.css">
   <script type="module" src="/workbench.js"></script>
+  <script type="module" src="/model-settings.js"></script>
 </head>
 <body>
   <svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -35,71 +38,98 @@
 
   <header class="bar">
     <div class="outer bar-inner">
-      <a class="brand" href="/">
+      <a class="brand" id="brand-link" href="/">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="brand-name"><strong>灵伴研习社</strong><span>Vibe Agent Bench</span></span>
       </a>
       <nav class="top-nav" aria-label="工作区">
         <a href="/" id="workspace-link" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-desk"/></svg>工作台</a>
-        <a href="/#history" id="history-link"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>运行记录</a>
-        <a href="/benchmark">对照实验<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+        <a href="/?view=benchmark" id="benchmark-link"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>示例与对照</a>
+        <a href="/?view=history" id="history-link"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>运行记录</a>
+        <button class="model-settings-button" type="button" data-model-settings>模型配置</button>
       </nav>
       <span class="connection" id="connection" data-state="pending"><i></i><span id="connection-text">连接中</span></span>
     </div>
   </header>
 
   <main class="outer main">
+    <p class="notice" id="notice" role="alert" hidden></p>
     <section class="intro workshop-intro" aria-labelledby="page-title" id="workspace-intro">
       <div>
-        <h1 id="page-title" tabindex="-1"><span class="agent-name">OpenCode</span> 用例工作台</h1>
-        <p>从本地项目生成用例，审核后执行，逐项查看验收证据。</p>
+        <h1 id="page-title" tabindex="-1"><span class="agent-name">Skill</span> 用例工作台</h1>
+        <p>一条用例包含发给 Agent 的消息和你想检查的通过条件。确认后就可以运行。</p>
       </div>
       <div class="companion-art"><img src="/workbench-mascot.webp" alt="" title="爱弥斯主题插图 · 个人同人" width="312" height="312"></div>
       <div class="workshop-actions">
         <button class="button primary" id="new-case" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>新建用例</button>
-        <a class="button secondary" href="/benchmark#run-demo"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>流程演示</a>
+        <button class="button secondary" type="button" id="demo-link"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>试跑示例（无需密钥）</button>
       </div>
     </section>
 
-    <section class="intro" id="history-intro" aria-labelledby="history-title" hidden>
-      <div>
-        <h1 id="history-title" tabindex="-1">运行记录</h1>
-        <p>打开一次评测，查看当时的用例版本和执行证据。</p>
-      </div>
-      <a class="button secondary" href="/benchmark#history-title">查看对照实验记录<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
-    </section>
-
-    <p class="notice" id="notice" role="alert" hidden></p>
     <div class="desk" id="workspace">
       <aside class="panel shelf" aria-labelledby="cases-title">
         <div class="shelf-heading"><h2 id="cases-title"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>项目用例</h2><span id="case-scroll-hint" class="case-scroll-hint" hidden>左右滑动查看更多</span><span id="case-count" class="count"></span></div>
         <div id="case-list" class="case-list"><p class="empty-small">正在读取项目用例…</p></div>
-        <div class="shelf-footer"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span>本地项目目录</span></div>
       </aside>
 
       <div class="desk-main">
         <ol class="flow panel" id="flow" aria-label="用例流程">
-          <li id="flow-create" data-state="current" aria-current="step"><span class="flow-number">1</span><span>生成用例</span></li>
-          <li id="flow-review" data-state="pending"><span class="flow-number">2</span><span>审核用例</span></li>
-          <li id="flow-run" data-state="pending"><span class="flow-number">3</span><span>执行与取证</span></li>
+          <li id="flow-create" data-state="current" aria-current="step"><span class="flow-number">1</span><span>新建用例</span></li>
+          <li id="flow-review" data-state="pending"><span class="flow-number">2</span><span>确认用例</span></li>
+          <li id="flow-run" data-state="pending"><span class="flow-number">3</span><span>运行</span></li>
         </ol>
 
         <section class="panel new-panel" id="create-panel" aria-labelledby="create-title" hidden>
           <div class="panel-heading">
             <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></span>
-            <div><h2 id="create-title">从项目生成用例</h2><p>输入 OpenCode 要处理的项目目录和验收要求。</p></div>
+            <h2 id="create-title">新建用例</h2>
           </div>
           <form id="create-form" class="form">
-            <div class="project-input">
-              <label class="field" for="project-dir"><span>本地项目目录</span><input id="project-dir" name="projectDir" class="mono" autocomplete="off" spellcheck="false" placeholder="C:\Projects\my-app" required></label>
-              <div class="project-shortcuts">
-                <button class="text-button" id="use-sample" type="button" hidden>使用内置样例目录</button>
-                <button class="text-button" id="use-java-vue" type="button" hidden>使用 Java + Vue 场景</button>
+            <fieldset class="create-kind" id="create-kind">
+              <legend>你想怎么创建？</legend>
+              <div class="create-kind-options">
+                <label><input type="radio" name="createKind" value="single" checked><span>自己写一条</span></label>
+                <label><input type="radio" name="createKind" value="suite"><span>按项目 Skill 生成多条</span></label>
               </div>
+            </fieldset>
+            <div class="project-input">
+              <label class="field" for="project-dir"><span>项目文件夹</span><input id="project-dir" name="projectDir" class="mono" autocomplete="off" spellcheck="false" placeholder="C:\Projects\my-app" aria-describedby="create-project-hint" required></label>
+              <p class="field-help" id="create-project-hint">粘贴本机上项目文件夹的完整路径。</p>
             </div>
-            <label class="field" for="create-title-input"><span>用例标题 <small>可选</small></span><input id="create-title-input" name="title" maxlength="120" placeholder="例如：后台任务列表增加状态筛选"></label>
-            <label class="field" for="create-requirement"><span>需求与验收目标 <small>内置样例可留空</small></span><textarea id="create-requirement" rows="4" name="requirement" maxlength="8000" placeholder="说明要改动的行为，以及怎样才算通过。"></textarea></label>
+            <label class="field" id="create-purpose-field" for="create-purpose"><span>想检查什么</span><select id="create-purpose">
+              <option value="analysis-only">只分析，保持文件原样</option>
+              <option value="auto-trigger">读取指定的 Skill</option>
+              <option value="approval-gate">先给方案，确认后再改</option>
+              <option value="code-standards">改动符合项目规则</option>
+              <option value="project-tests">完成需求并通过项目测试</option>
+            </select></label>
+            <div id="create-target-slot" hidden></div>
+            <label class="field" id="create-requirement-field" for="create-requirement"><span>你想让 Agent 做什么？</span><textarea id="create-requirement" rows="3" name="requirement" maxlength="8000" placeholder="例如，说明订单列表的数据从哪来。" aria-describedby="create-requirement-hint"></textarea><small class="field-help" id="create-requirement-hint">留空会使用示例任务，可以在审核时调整。</small></label>
+            <details class="native-discovery create-options" id="create-options">
+              <summary>可选设置</summary>
+              <div class="create-options-body">
+                <label class="field" for="create-title-input"><span><span id="create-title-label">用例名称</span> <small>可选</small></span><input id="create-title-input" name="title" maxlength="120" placeholder="例如，后台任务列表增加状态筛选"></label>
+                <div class="project-shortcuts" id="create-project-shortcuts">
+                  <button class="text-button" id="use-sample" type="button" hidden>使用内置样例目录</button>
+                  <button class="text-button" id="use-java-vue" type="button" hidden>使用 Java + Vue 场景</button>
+                </div>
+                <div id="create-discovery-slot">
+                  <div class="native-create" id="native-create">
+                    <div class="native-discovery-actions">
+                      <button class="button secondary compact" id="discover-project" type="button">读取项目 Skill</button>
+                      <p class="field-help" id="discovery-status" role="status"></p>
+                    </div>
+                    <label class="field" for="create-native-skill" id="create-native-skill-field" hidden><span id="create-native-skill-label">目标 Skill</span><select id="create-native-skill"></select></label>
+                    <details class="native-discovery" id="discovery-preview" hidden>
+                      <summary>查看项目配置与 Skill</summary>
+                      <div id="discovery-preview-content"></div>
+                    </details>
+                  </div>
+                </div>
+              </div>
+            </details>
             <div class="form-actions">
+              <p class="field-help" id="create-submit-hint">先查看草稿。审核后才能运行。</p>
               <button class="button secondary" id="cancel-create" type="button">取消</button>
               <button class="button primary" id="generate" type="submit">生成审核草稿<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button>
             </div>
@@ -108,67 +138,161 @@
 
         <section class="panel case-panel" id="case-panel" aria-labelledby="case-title" hidden>
           <div class="case-heading">
-            <div class="case-meta"><span class="agent-tag"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>OpenCode</span><span class="badge" id="case-state"></span><span class="version" id="case-version"></span></div>
+            <div class="case-meta"><span class="agent-tag"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><span id="case-agent-name"></span></span><span class="badge" id="case-state"></span><span class="version" id="case-version"></span></div>
             <h2 id="case-title" tabindex="-1"></h2>
             <div class="project-path" id="case-project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="case-path" class="mono"></span></div>
           </div>
+          <div class="skill-suite-parent" id="skill-suite-parent" hidden>
+            <a class="text-button" id="skill-suite-back" href="/">返回测试用例清单</a>
+          </div>
+          <section class="skill-suite-review" id="skill-suite-review" aria-labelledby="skill-suite-title" hidden>
+            <div class="skill-suite-header">
+              <div><h3 id="skill-suite-title" tabindex="-1">用例清单</h3><p>先确认你想跑的用例。每条都写明发什么消息、怎么判通过。</p></div>
+              <button class="button secondary compact" id="skill-suite-propose" type="button" hidden>补充测试场景</button>
+            </div>
+            <p class="skill-suite-status" id="skill-suite-status" role="status" hidden></p>
+            <div class="skill-suite-body" id="skill-suite-body" hidden>
+              <div class="skill-suite-toolbar"><p id="skill-suite-summary" aria-live="polite"></p><button class="button primary compact" id="skill-suite-run" type="button" disabled>运行已审核用例</button></div>
+              <div class="skill-suite-proposal-result" id="skill-suite-proposal-result" hidden><p id="skill-suite-proposal-notice" role="status"></p><button class="text-button" id="skill-suite-proposal-jump" type="button" hidden>查看新增用例</button></div>
+              <div class="skill-suite-groups" id="skill-suite-groups"></div>
+              <details class="native-discovery skill-suite-coverage" id="skill-suite-coverage">
+                <summary id="skill-suite-coverage-title">查看 Skill 覆盖</summary>
+                <ul id="skill-suite-coverage-list"></ul>
+              </details>
+            </div>
+          </section>
+          <div class="skill-suite-settings" id="skill-suite-settings" hidden>
+            <button class="text-button" id="skill-suite-settings-toggle" type="button" aria-expanded="false" aria-controls="case-individual-review">展开原用例设置</button>
+          </div>
+          <div id="case-individual-review">
+          <section class="review-overview" aria-labelledby="review-overview-title">
+            <div class="review-overview-heading">
+              <h3 id="review-overview-title">用例摘要</h3>
+              <button class="button secondary compact" id="review-editor-toggle" type="button" aria-expanded="false" aria-controls="review-editor">编辑用例</button>
+            </div>
+            <div class="review-overview-columns" id="review-overview-fields"></div>
+          </section>
+          <form id="review-form" novalidate>
+          <div id="review-editor" hidden>
           <div class="tabs" role="tablist" aria-label="审核用例">
-            <button type="button" class="tab" role="tab" id="tab-spec" aria-controls="content-spec" aria-selected="true">任务与提示词</button>
+            <button type="button" class="tab" role="tab" id="tab-spec" aria-controls="content-spec" aria-selected="true">输入与预期</button>
             <button type="button" class="tab" role="tab" id="tab-commands" aria-controls="content-commands" aria-selected="false" tabindex="-1">检查与命令 <span id="command-count" class="count"></span></button>
             <button type="button" class="tab" role="tab" id="tab-skills" aria-controls="content-skills" aria-selected="false" tabindex="-1">Skill 配置</button>
             <button type="button" class="tab" role="tab" id="tab-files" aria-controls="content-files" aria-selected="false" tabindex="-1">项目文件</button>
           </div>
-          <form id="review-form" novalidate>
             <div class="tab-content" role="tabpanel" id="content-spec" aria-labelledby="tab-spec">
               <label class="field" for="review-title"><span>用例标题</span><input id="review-title" name="title" maxlength="120" required></label>
-              <label class="field" for="review-requirement"><span>需求与验收目标</span><textarea id="review-requirement" name="requirement" rows="3" maxlength="8000"></textarea></label>
-              <label class="field" for="review-prompt"><span>OpenCode 提示词</span><textarea id="review-prompt" name="prompt" rows="5" maxlength="16000" class="mono" spellcheck="false"></textarea></label>
+              <label class="field" for="review-agent" id="review-agent-field"><span>执行 Agent</span><select id="review-agent" name="agent"><option value="opencode">OpenCode</option><option value="dsh">DeepSeek Harness（DSH）</option></select></label>
+              <p class="native-scenario" id="review-native-scenario" hidden></p>
+              <label class="field" for="review-requirement"><span>场景说明</span><textarea id="review-requirement" name="requirement" rows="3" maxlength="8000" aria-describedby="review-requirement-help"></textarea><small class="field-help" id="review-requirement-help">用于记录这条用例在测什么。</small></label>
+              <label class="field" for="review-prompt"><span id="review-prompt-label">运行时发送的消息</span><textarea id="review-prompt" name="prompt" rows="5" maxlength="16000" spellcheck="false" aria-describedby="review-prompt-help"></textarea><small class="field-help" id="review-prompt-help">运行后，Agent 先收到这条消息。</small></label>
+              <div class="native-review-fields" id="native-inputs" hidden>
+                <label class="field" for="review-native-expected"><span>预期结果</span><textarea id="review-native-expected" rows="3" maxlength="8000" placeholder="描述 Agent 应完成什么，以及应停在什么阶段。" aria-describedby="review-expected-help"></textarea><small class="field-help" id="review-expected-help">这一栏供你审核。可执行的通过条件在「Skill 与判定证据」和「检查与命令」。</small></label>
+                <div class="native-review-fields" id="review-native-confirmation-fields">
+                  <label class="field" for="review-native-confirmation"><span>审批确认消息 <small>可选</small></span><textarea id="review-native-confirmation" rows="3" maxlength="8000" aria-describedby="native-confirmation-help"></textarea></label>
+                  <p class="field-help" id="native-confirmation-help">首轮通过门禁后，评测台在同一会话发送这条消息。留空时只运行首轮。</p>
+                </div>
+              </div>
             </div>
             <div class="tab-content" role="tabpanel" id="content-commands" aria-labelledby="tab-commands" hidden>
               <div id="sample-checks" hidden></div>
-              <p class="field-help" id="command-help">准备命令在 OpenCode 运行前执行，验证命令在它完成后执行。每行填写一个参数。</p>
+              <p class="field-help" id="command-help">准备命令在 Agent 运行前执行，验证命令在它完成后执行。每行填写一个参数。</p>
               <div id="commands" class="commands"></div>
               <button class="button secondary compact" id="add-command" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>添加命令</button>
             </div>
             <div class="tab-content" role="tabpanel" id="content-skills" aria-labelledby="tab-skills" hidden>
-              <label class="field skill-profile-field" for="review-skill-profile"><span>Skill 配置</span><select id="review-skill-profile" name="skillProfile" aria-describedby="skill-profile-help"></select></label>
-              <p class="field-help" id="skill-profile-help"></p>
-              <ul class="skill-pack-list" id="skill-profile-packs"></ul>
+              <div class="native-review-fields" id="review-native-evidence" hidden>
+                <div class="native-fields">
+                  <label class="field" for="review-native-required-skills"><span>必须核验正文的 Skill</span><textarea id="review-native-required-skills" rows="3" spellcheck="false" placeholder="每行填写一个 Skill 名称"></textarea></label>
+                  <label class="field" for="review-native-forbidden-skills"><span>不得读取的 Skill</span><textarea id="review-native-forbidden-skills" rows="3" spellcheck="false" placeholder="每行填写一个 Skill 名称"></textarea></label>
+                </div>
+                <label class="field" for="review-native-write-policy"><span>文件写入预期</span><select id="review-native-write-policy"><option value="none">工作区保持原样</option><option value="proposal-only">确认前只允许写入提案</option><option value="allow">允许实现变更</option></select></label>
+                <div class="native-review-fields" id="native-write-fields">
+                  <label class="field" for="review-native-paths"><span id="native-path-label">允许写入的路径</span><textarea id="review-native-paths" rows="3" spellcheck="false" placeholder="每行填写一个项目相对路径"></textarea></label>
+                  <label class="native-check" for="review-native-before-write"><input id="review-native-before-write" type="checkbox"><span>实现前必须读到要求的 Skill 正文</span></label>
+                  <label class="native-check" for="review-native-require-change"><input id="review-native-require-change" type="checkbox"><span>本轮必须产生文件变更</span></label>
+                  <details class="native-discovery" id="native-path-evidence">
+                    <summary id="native-path-summary">文件和审批证据</summary>
+                    <div class="native-review-fields native-extra-fields">
+                      <label class="field" for="review-native-required-reads"><span>实现前必须读取的规范文件</span><textarea id="review-native-required-reads" rows="3" spellcheck="false" placeholder="每行填写一个项目相对文件路径"></textarea></label>
+                      <div class="native-review-fields" id="native-gate-fields">
+                        <label class="field" for="review-native-approval-files"><span>确认前必须变更的提案文件</span><textarea id="review-native-approval-files" rows="3" spellcheck="false" placeholder="每行填写一个项目相对文件路径"></textarea></label>
+                        <label class="field" for="review-native-post-approval"><span>确认后可写入的路径</span><textarea id="review-native-post-approval" rows="3" spellcheck="false" placeholder="每行填写一个项目相对路径"></textarea></label>
+                        <fieldset class="native-gate"><legend>确认前执行的验证命令</legend><p id="native-gate-empty" class="field-help">在「检查与命令」里添加验证命令后，可在这里选作门禁。</p><div id="native-gate-commands"></div></fieldset>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+                <details class="native-discovery" id="review-native-discovery">
+                  <summary>查看项目配置与 Skill</summary>
+                  <div id="review-native-discovery-content"></div>
+                </details>
+              </div>
+              <div class="native-review-fields" id="review-pack-profile">
+                <label class="field skill-profile-field" for="review-skill-profile"><span>Skill 配置</span><select id="review-skill-profile" name="skillProfile" aria-describedby="skill-profile-help"></select></label>
+                <p class="field-help" id="skill-profile-help"></p>
+                <ul class="skill-pack-list" id="skill-profile-packs"></ul>
+              </div>
             </div>
             <div class="tab-content" role="tabpanel" id="content-files" aria-labelledby="tab-files" hidden>
               <p class="field-help">生成用例时识别到的项目文件。</p>
               <ul class="source-files" id="source-files"></ul>
             </div>
+            </div>
             <div class="review-footer">
               <p id="review-hint"></p>
               <div class="form-actions">
                 <button class="button secondary compact" id="save-case" type="submit" value="save">保存草稿</button>
-                <button class="button secondary compact" id="approve-case" type="submit" value="approve"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>审核通过</button>
+                <button class="button secondary compact" id="approve-case" type="submit" value="approve"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>确认用例</button>
                 <button class="button primary compact" id="run-case" type="button" disabled><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>运行用例</span></button>
               </div>
             </div>
           </form>
+          </div>
         </section>
 
         <section class="panel execution" id="execution" aria-labelledby="execution-title" hidden>
           <div class="panel-heading">
             <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg></span>
-            <div><h2 id="execution-title" tabindex="-1">执行与证据</h2><p id="execution-meta">执行后会逐项显示状态、耗时和证据。</p></div>
-            <div id="execution-state" class="panel-action"></div>
+            <div><h2 id="execution-title" tabindex="-1">运行结果</h2><p id="execution-meta"></p></div>
+            <div class="panel-action execution-actions">
+              <span id="execution-state"></span>
+              <a class="button secondary compact" id="return-to-case" href="/" hidden>返回用例</a>
+              <button class="button secondary compact" id="run-retest" type="button" title="沿用本轮的 Agent 和 Skill 条件，使用当前模型配置" hidden>发起复测</button>
+            </div>
           </div>
           <div class="execution-empty" id="execution-empty"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><p>运行已审核的用例后，检查结果会出现在这里。</p></div>
           <div class="execution-body" id="execution-body" hidden>
-            <div id="run-visualization" hidden></div>
-            <section class="output-evidence" aria-labelledby="output-evidence-title">
-              <h3 id="output-evidence-title">规范与产出</h3>
+            <section id="run-outcome" hidden></section>
+            <details class="report-details" id="report-details">
+            <summary>查看运行详情</summary>
+            <nav class="execution-nav" id="execution-nav" aria-label="报告章节">
+              <button type="button" data-report-target="target-approval-title" aria-controls="target-approval" id="report-approval-link" hidden>审批</button>
+              <button type="button" data-report-target="output-evidence-title" aria-controls="output-evidence">关键证据</button>
+              <button type="button" data-report-target="run-visualization" aria-controls="run-visualization">运行流程</button>
+              <button type="button" data-report-target="checks-title" aria-controls="checks">验收检查</button>
+              <button type="button" data-report-target="events-title" aria-controls="events">事件时间线</button>
+              <button type="button" data-report-target="advice-title" aria-controls="advice" id="report-advice-link" hidden>AI 建议</button>
+            </nav>
+            <section class="native-run-expectation" id="native-run-expectation" aria-labelledby="native-run-expectation-title" hidden>
+              <h3 id="native-run-expectation-title">本轮审核预期</h3>
+              <p id="native-run-expected"></p>
+            </section>
+            <section class="target-approval" id="target-approval" aria-labelledby="target-approval-title" hidden>
+              <h3 id="target-approval-title" tabindex="-1">本轮审批记录</h3>
+              <ol id="target-approval-list" class="target-approval-list"></ol>
+              <div id="target-approval-assets"></div>
+            </section>
+            <section class="output-evidence" id="output-evidence" aria-labelledby="output-evidence-title">
+              <h3 id="output-evidence-title" tabindex="-1">关键证据</h3>
               <div class="output-evidence-cards" id="output-evidence-cards"></div>
               <div class="output-evidence-sequence" id="output-evidence-sequence" hidden></div>
             </section>
-            <a class="timeline-jump" id="timeline-jump" href="#events-title">跳到时间线 <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            <div id="run-visualization" tabindex="-1" hidden></div>
             <p class="sr-only" id="execution-live" role="status"></p>
             <div class="execution-grid">
               <section class="execution-lane checks-lane" aria-labelledby="checks-title">
-                <h3 id="checks-title"><span><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>检查步骤</span></h3>
+                <h3 id="checks-title" tabindex="-1"><span><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>检查步骤</span></h3>
                 <ol class="checks" id="checks"></ol>
               </section>
               <section class="execution-lane events-lane" aria-labelledby="events-title">
@@ -186,16 +310,16 @@
                     <select class="timeline-filter" id="event-filter" aria-label="筛选执行事件" aria-controls="events">
                       <option value="all">全部事件</option>
                       <optgroup label="事件类型">
-                        <option value="agent">OpenCode 工具</option>
+                        <option value="agent">Agent 工具</option>
                         <option value="skill">Skill</option>
                         <option value="output">命令输出</option>
                       </optgroup>
                       <optgroup label="执行阶段">
-                        <option value="phase-queue">调度</option>
-                        <option value="phase-prepare">准备</option>
-                        <option value="phase-implement">实现</option>
-                        <option value="phase-verify">独立验收</option>
-                        <option value="phase-review">审阅</option>
+                        <option value="phase-queue">排队</option>
+                        <option value="phase-prepare">准备项目</option>
+                        <option value="phase-implement">Agent 执行</option>
+                        <option value="phase-verify">检查</option>
+                        <option value="phase-review">AI 建议</option>
                       </optgroup>
                     </select>
                   </div>
@@ -210,27 +334,137 @@
               </section>
             </div>
             <section class="advice" id="advice" aria-labelledby="advice-title" hidden>
-              <div class="advice-heading"><h3 id="advice-title">修复建议</h3><div id="advice-state"></div></div>
+              <div class="advice-heading"><h3 id="advice-title" tabindex="-1">AI 建议</h3><div id="advice-state"></div></div>
               <div id="advice-content"></div>
             </section>
+            </details>
           </div>
         </section>
       </div>
     </div>
 
-    <section class="panel history-panel" id="history" aria-labelledby="history-list-title" hidden>
-      <div class="panel-heading"><span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg></span><div><h2 id="history-list-title">单用例评测</h2><p id="history-count"></p></div></div>
-      <div class="history-list" id="history-list"></div>
-    </section>
-    <footer class="page-footer"><a href="/benchmark">旧版评测与演示<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a></footer>
+    <div id="benchmark-view" hidden>
+      <section class="intro workshop-intro benchmark-intro" aria-labelledby="benchmark-title">
+        <div>
+          <h1 id="benchmark-title" tabindex="-1">后台任务列表增加状态筛选</h1>
+          <p id="benchmark-description">用同一份样例验证 Skill 加载、状态筛选和测试辨别力。</p>
+        </div>
+        <div class="workshop-actions">
+          <button class="button primary compact" id="run-demo" type="button">试跑示例（无需密钥）</button>
+          <a id="benchmark-history-link" class="button secondary" href="/?view=history&amp;type=builtin"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>查看示例记录</a>
+        </div>
+      </section>
+
+      <details class="panel benchmark-setup" id="benchmark-setup">
+        <summary class="panel-heading">
+          <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></span>
+          <span class="benchmark-setup-description"><strong>进阶对照</strong><span id="benchmark-run-hint">比较不同 Agent 和 Skill 设置。</span></span>
+          <svg class="icon benchmark-setup-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </summary>
+        <form class="benchmark-form" id="single-run-form">
+          <label class="field" for="agent-mode"><span>执行 Agent</span><select id="agent-mode" name="mode">
+            <option value="codex">Codex</option>
+            <option value="opencode">OpenCode</option>
+            <option value="dsh">DeepSeek Harness（DSH）</option>
+          </select></label>
+          <label class="field" for="skill-mode"><span>Skill 条件</span><select id="skill-mode" name="skillMode">
+            <option value="with">有 Skill</option>
+            <option value="without">无 Skill</option>
+          </select></label>
+          <div class="benchmark-actions">
+            <button class="button primary compact" id="run-single" type="submit">开始评测</button>
+            <button class="button secondary compact" id="run-experiment" type="button">运行四组对照</button>
+          </div>
+        </form>
+      </details>
+
+      <details class="panel target-suite" id="testtarget-suite" aria-labelledby="testtarget-title" hidden>
+        <summary class="panel-heading">
+          <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg></span>
+          <span><strong id="testtarget-title" tabindex="-1">TestTarget 项目对照</strong><span class="target-suite-description">订单详情、提案确认和失败反馈</span></span>
+        </summary>
+        <div class="target-suite-actions">
+          <p id="testtarget-summary" class="target-suite-summary" role="status"></p>
+          <button class="button primary compact" id="run-testtarget" type="button" disabled>运行四轮</button>
+        </div>
+        <ul id="testtarget-trials" class="target-suite-trials"></ul>
+      </details>
+
+      <div class="benchmark-body">
+        <aside class="panel shelf benchmark-recent" aria-labelledby="benchmark-recent-title">
+          <div class="shelf-heading"><h2 id="benchmark-recent-title"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>最近评测</h2><span id="benchmark-recent-scroll-hint" class="case-scroll-hint" hidden>左右滑动查看更多</span><span class="count" id="benchmark-recent-count"></span></div>
+          <div class="case-list" id="benchmark-recent-list"><p class="empty-small">正在读取评测记录…</p></div>
+        </aside>
+        <div class="benchmark-main" id="benchmark-main">
+          <section class="panel comparison" id="comparison" aria-labelledby="comparison-title" hidden>
+            <div class="panel-heading">
+              <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg></span>
+              <div><h2 id="comparison-title" tabindex="-1">四组对照</h2><p id="comparison-meta"></p></div>
+              <div id="comparison-status" class="panel-action" role="status"></div>
+            </div>
+            <div class="comparison-content">
+              <div class="comparison-lanes" id="comparison-lanes"></div>
+              <div class="comparison-scroll" id="comparison-scroll" role="region" aria-label="Agent 和 Skill 对照结果" tabindex="0">
+                <table class="comparison-table" id="comparison-table"></table>
+              </div>
+              <p class="comparison-scroll-hint" id="comparison-scroll-hint" hidden>横向滚动查看全部验收项</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="history-view" hidden>
+      <section class="intro workshop-intro" aria-labelledby="history-title">
+        <div><h1 id="history-title" tabindex="-1">运行记录</h1><p>打开一条记录，查看通过条件和结果。</p></div>
+      </section>
+      <section class="panel history-panel" id="history" aria-labelledby="history-list-title">
+        <div class="panel-heading">
+          <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg></span>
+          <div><h2 id="history-list-title">评测记录</h2><p id="history-count"></p></div>
+          <div class="history-tools panel-action"><label for="history-filter" class="sr-only">评测类型</label><select id="history-filter">
+            <option value="all">全部类型</option>
+            <option value="project">项目用例</option>
+            <option value="builtin">内置评测</option>
+          </select></div>
+        </div>
+        <div class="history-list" id="history-list"></div>
+      </section>
+    </div>
   </main>
+
+  <dialog class="skill-proposal-dialog" id="skill-proposal-dialog" aria-labelledby="skill-proposal-title">
+    <form id="skill-proposal-form">
+      <div class="skill-proposal-header">
+        <h2 id="skill-proposal-title">补充测试场景</h2>
+        <button type="button" class="icon-button" id="skill-proposal-close" aria-label="关闭"><svg class="icon" aria-hidden="true"><use href="#i-cross"/></svg></button>
+      </div>
+      <div class="skill-proposal-body">
+        <p id="skill-proposal-context" class="field-help" hidden></p>
+        <label for="skill-proposal-message" class="field"><span id="skill-proposal-label">还想测什么？</span><textarea id="skill-proposal-message" rows="5" maxlength="1800" placeholder="例如，看看订单接口报错时，页面会不会给出重试提示。" aria-describedby="skill-proposal-help" required autofocus></textarea></label>
+        <p id="skill-proposal-help" class="field-help">草稿审核后才能运行。</p>
+        <p id="skill-proposal-error" class="skill-proposal-error" role="alert" hidden></p>
+      </div>
+      <div class="skill-proposal-actions form-actions">
+        <button type="button" class="button secondary compact" id="skill-proposal-cancel">取消</button>
+        <button type="submit" class="button primary compact" id="skill-proposal-submit">生成用例草稿</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog class="artifact-dialog" id="artifact-dialog" aria-labelledby="artifact-title">
     <div class="artifact-header">
       <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span>
       <div class="artifact-heading"><h2 id="artifact-title">证据</h2><p id="artifact-file" class="mono"></p></div>
-      <a class="button secondary compact" id="artifact-raw" target="_blank" rel="noopener">原始文件<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      <a class="button secondary compact" id="artifact-raw" target="_blank" rel="noopener">打开原件<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
       <button type="button" class="icon-button" id="close-artifact" aria-label="关闭证据" autofocus><svg class="icon" aria-hidden="true"><use href="#i-cross"/></svg></button>
+    </div>
+    <div class="artifact-toolbar" id="artifact-toolbar" hidden>
+      <div class="artifact-views" id="artifact-views" role="tablist" aria-label="证据视图" hidden>
+        <button type="button" id="artifact-summary-tab" role="tab" aria-controls="artifact-content" aria-selected="true" data-artifact-view="summary">证据摘要</button>
+        <button type="button" id="artifact-source-tab" role="tab" aria-controls="artifact-content" aria-selected="false" tabindex="-1" data-artifact-view="source">原始内容</button>
+      </div>
+      <button type="button" class="button secondary compact" id="artifact-back" hidden>返回上一份证据</button>
     </div>
     <div class="artifact-content" id="artifact-content"></div>
   </dialog>

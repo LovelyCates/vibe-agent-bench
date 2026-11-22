@@ -3,11 +3,16 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isProjectAgent } from './lib/agents.mjs';
 import { openCases } from './lib/cases.mjs';
+import { testModelConnection } from './lib/model-probe.mjs';
+import { ModelSettingsError, openModelSettings } from './lib/model-settings.mjs';
 import { readRunEvents, redactLog } from './lib/run-events.mjs';
 import { openRuns } from './lib/runs.mjs';
 import { scenarios } from './lib/scenarios.mjs';
 import { listSkillProfiles, matchesSkillLocks } from './lib/skill-packs.mjs';
+import { openSkillSuites } from './lib/skill-suites.mjs';
+import { testTargetTrials } from './lib/testtarget.mjs';
 
 const root = fileURLToPath(new URL('./', import.meta.url));
 const defaultProject = join(root, 'fixture');
@@ -15,12 +20,19 @@ const htmlType = 'text/html; charset=utf-8';
 const cssType = 'text/css; charset=utf-8';
 const jsType = 'text/javascript; charset=utf-8';
 const webFiles = {
-  '/benchmark': ['index.html', htmlType],
-  '/styles.css': ['styles.css', cssType],
-  '/app.js': ['app.js', jsType],
+  '/': ['workbench.html', htmlType],
+  '/benchmark': ['workbench.html', htmlType],
+  '/benchmark-comparison.js': ['benchmark-comparison.js', jsType],
+  '/evidence-preview.js': ['evidence-preview.js', jsType],
+  '/evidence-preview.css': ['evidence-preview.css', cssType],
+  '/evidence-operations.js': ['evidence-operations.js', jsType],
+  '/evidence-skills.js': ['evidence-skills.js', jsType],
+  '/evidence-validation.js': ['evidence-validation.js', jsType],
   '/run-visualization.css': ['run-visualization.css', cssType],
   '/run-visualization.js': ['run-visualization.js', jsType],
   '/run-timing.js': ['run-timing.js', jsType],
+  '/model-settings.js': ['model-settings.js', jsType],
+  '/model-settings.css': ['model-settings.css', cssType],
   '/workbench.css': ['workbench.css', cssType],
   '/workbench.js': ['workbench.js', jsType],
   '/workbench-highlight.js': ['workbench-highlight.js', jsType],
@@ -89,8 +101,21 @@ async function sourcePreview(response, testCase, file) {
   return json(response, 200, { file, content: redactLog(content.toString('utf8')) });
 }
 
-export async function startServer({ port = Number(process.env.PORT ?? 4317), runsDir = join(root, 'runs'), casesDir = join(root, 'cases') } = {}) {
-  const [runs, cases] = await Promise.all([openRuns(resolve(runsDir)), openCases(resolve(casesDir), { defaultProject })]);
+export async function startServer({
+  port = Number(process.env.PORT ?? 4317),
+  runsDir = join(root, 'runs'),
+  casesDir = join(root, 'cases'),
+  skillSuitesDir = join(casesDir, '.skill-suites'),
+  modelSettingsDir,
+  testTargetDir = process.env.VIBE_BENCH_TESTTARGET_DIR || resolve(root, '../../TestTarget'),
+} = {}) {
+  const models = await openModelSettings(modelSettingsDir);
+  const [runs, cases] = await Promise.all([
+    openRuns(resolve(runsDir), { captureModel: models.capture, testTargetDir: resolve(testTargetDir) }),
+    openCases(resolve(casesDir), { defaultProject }),
+  ]);
+  const skillSuites = await openSkillSuites(skillSuitesDir, { cases });
+  const caseView = (record) => skillSuites.has(record.id) ? { ...record, hasSkillSuite: true } : record;
   const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -105,31 +130,54 @@ export async function startServer({ port = Number(process.env.PORT ?? 4317), run
       const { pathname, searchParams } = new URL(request.url, 'http://127.0.0.1');
       const method = request.method;
       const caseRoute = pathname.match(/^\/api\/cases\/([0-9a-f-]{36})(?:\/(source|run))?$/u);
-      if (method === 'GET' && (pathname === '/' || Object.hasOwn(webFiles, pathname))) {
-        const linkedRun = runs.get(searchParams.get('run'));
-        const olderReport = searchParams.has('experiment') || (linkedRun && !linkedRun.caseId);
-        const [file, type] = pathname === '/' ? [olderReport ? 'index.html' : 'workbench.html', htmlType] : webFiles[pathname];
+      const suiteRoute = pathname.match(/^\/api\/cases\/([0-9a-f-]{36})\/skill-suite(?:\/(run|proposals))?$/u);
+      if (method === 'GET' && Object.hasOwn(webFiles, pathname)) {
+        const [file, type] = webFiles[pathname];
         const content = await readFile(join(root, 'web', file));
         response.writeHead(200, { 'Content-Type': type });
         return response.end(content);
       }
       if (method === 'GET' && pathname === '/api/cases') {
-        return json(response, 200, { cases: cases.list(), defaultProject, scenarios, skillProfiles: await listSkillProfiles() });
+        return json(response, 200, { cases: cases.list().map(caseView), defaultProject, scenarios, skillProfiles: await listSkillProfiles() });
+      }
+      if (method === 'GET' && pathname === '/api/model-config') {
+        return json(response, 200, await models.view());
+      }
+      if (method === 'GET' && suiteRoute && !suiteRoute[2]) {
+        if (!cases.get(suiteRoute[1])) return json(response, 404, { error: '找不到该评测用例。' });
+        return json(response, 200, { suite: await skillSuites.get(suiteRoute[1]) ?? null });
       }
       if (method === 'GET' && caseRoute && caseRoute[2] !== 'run') {
         const testCase = cases.get(caseRoute[1]);
         if (!testCase) return json(response, 404, { error: '找不到该评测用例。' });
         if (caseRoute[2] === 'source') return await sourcePreview(response, testCase, searchParams.get('file'));
-        return json(response, 200, { case: testCase });
+        return json(response, 200, { case: caseView(testCase) });
       }
       if (pathname === '/api/runs' && method === 'GET') return json(response, 200, { runs: runs.list() });
+      if (pathname === '/api/testtarget' && method === 'GET') {
+        const records = runs.list().filter((run) => run.testTarget);
+        const suiteId = records[0]?.testTarget.suiteId ?? null;
+        const attempts = records.filter((run) => run.testTarget.suiteId === suiteId);
+        return json(response, 200, { trials: testTargetTrials, suiteId,
+          runs: testTargetTrials.map(({ id }) => attempts.find(({ testTarget }) => testTarget.trialId === id)).filter(Boolean) });
+      }
+      const startTestTarget = method === 'POST' && pathname === '/api/testtarget';
       const createRun = method === 'POST' && ['/api/runs', '/api/experiments'].includes(pathname);
+      const discoverCase = method === 'POST' && pathname === '/api/cases/discover';
       const createCase = method === 'POST' && pathname === '/api/cases';
       const updateCase = method === 'PUT' && caseRoute && !caseRoute[2];
       const startCase = method === 'POST' && caseRoute?.[2] === 'run';
-      if (createRun || createCase || updateCase || startCase) {
+      const createProjectSuite = method === 'POST' && pathname === '/api/cases/skill-suite';
+      const createSkillSuite = method === 'POST' && suiteRoute && !suiteRoute[2];
+      const startSkillSuite = method === 'POST' && suiteRoute?.[2] === 'run';
+      const proposeSkillSuite = method === 'POST' && suiteRoute?.[2] === 'proposals';
+      const saveModel = method === 'PUT' && pathname === '/api/model-config';
+      const activateModel = method === 'POST' && pathname === '/api/model-config/activate';
+      const probeModel = method === 'POST' && pathname === '/api/model-config/test';
+      if (createRun || discoverCase || createCase || updateCase || startCase || createProjectSuite || createSkillSuite || startSkillSuite || proposeSkillSuite
+        || saveModel || activateModel || probeModel || startTestTarget) {
         if (request.headers.origin && request.headers.origin !== `http://${host}`) {
-          return json(response, 403, { error: '请从评测台页面发起运行。' });
+          return json(response, 403, { error: '请从评测台页面发起请求。' });
         }
         const contentType = request.headers['content-type']?.split(';')[0]?.trim();
         if (contentType !== 'application/json') return json(response, 415, { error: '请求需要 JSON。' });
@@ -137,18 +185,67 @@ export async function startServer({ port = Number(process.env.PORT ?? 4317), run
         if (!body || typeof body !== 'object' || Array.isArray(body)) {
           return json(response, 400, { error: '请求需要 JSON 对象。' });
         }
+        if (startTestTarget) {
+          const suite = await runs.createTestTarget();
+          return suite ? json(response, 202, suite) : json(response, 409, { error: '已有评测或对照实验正在执行。' });
+        }
+        if (saveModel) return json(response, 200, await models.save(body));
+        if (activateModel) return json(response, 200, await models.activate(body));
+        if (probeModel) {
+          const { config, key } = await models.preview(body);
+          if (!key && !config.allowNoApiKey) return json(response, 400, { error: '测试连接需要 API 密钥。' });
+          const probe = await testModelConnection(config, key);
+          return json(response, probe.ok ? 200 : 502, probe);
+        }
+        if (discoverCase) return json(response, 200, { discovery: await cases.discover(body.projectDir) });
+        if (createProjectSuite) return json(response, 201, await skillSuites.createFromProject(body));
         if (createCase) return json(response, 201, { case: await cases.create(body) });
-        if (updateCase) return json(response, 200, { case: await cases.update(caseRoute[1], body) });
+        if (updateCase) return json(response, 200, { case: caseView(await cases.update(caseRoute[1], body)) });
+        if (createSkillSuite) return json(response, 200, { suite: await skillSuites.create(suiteRoute[1]) });
+        if (proposeSkillSuite) {
+          return json(response, 200, await skillSuites.proposeFromRequest(suiteRoute[1], body, await models.capture()));
+        }
+        if (startSkillSuite) {
+          const id = suiteRoute[1];
+          const suite = await skillSuites.get(id);
+          if (!suite || suite.parentCaseId !== id) return json(response, 404, { error: '找不到这份场景清单。' });
+          const requested = body.cases;
+          if (!Array.isArray(requested) || !requested.length || requested.length > suite.rows.length
+            || requested.some((entry) => !entry || typeof entry.id !== 'string' || !Number.isSafeInteger(entry.version))
+            || new Set(requested.map(({ id }) => id)).size !== requested.length) {
+            return json(response, 400, { error: '请选择要运行的已审核场景。' });
+          }
+          const versions = new Map(requested.map(({ id, version }) => [id, version]));
+          const orderedIds = suite.rows.map(({ caseId }) => caseId).filter((caseId) => versions.has(caseId));
+          if (orderedIds.length !== requested.length) return json(response, 400, { error: '选择的场景不属于这份清单。' });
+          const discovery = await cases.discover(suite.projectDir);
+          const selected = orderedIds.map((caseId) => cases.get(caseId));
+          if (selected.some((record) => !record?.native || record.status !== 'approved' || record.version !== versions.get(record.id))) {
+            return json(response, 409, { error: '有场景尚未审核或版本已更新，请刷新清单后再运行。' });
+          }
+          if (selected.some(({ native }) => native.discovery.digest !== discovery.digest)) {
+            return json(response, 409, { error: '项目原生 Skill 或 OpenCode 配置已变更，请重新审核场景。' });
+          }
+          const batch = await runs.createSkillSuite(id, selected);
+          return batch ? json(response, 202, batch) : json(response, 409, { error: '已有评测正在执行，请稍后再运行。' });
+        }
         if (startCase) {
-          const skillProfiles = await listSkillProfiles();
           const testCase = cases.get(caseRoute[1]);
           if (!testCase) return json(response, 404, { error: '找不到该评测用例。' });
+          if (testCase.skillSuiteRoot) return json(response, 409, { error: '请从测试用例组中选择已审核的用例运行。' });
           if (testCase.version !== body.version || testCase.status !== 'approved') {
             return json(response, 409, { error: '请先审查并通过当前版本。' });
           }
-          const selected = skillProfiles.find(({ id }) => id === (testCase.skillProfile ?? 'none'));
-          if (!selected || !matchesSkillLocks(selected.packs, testCase.skillLocks)) {
-            return json(response, 409, { error: '本机 Skill 包与已审核版本不同，请重新审查配置。' });
+          if (testCase.native) {
+            const discovery = await cases.discover(testCase.projectDir);
+            if (discovery.digest !== testCase.native.discovery.digest) {
+              return json(response, 409, { error: '项目原生 Skill 或 OpenCode 配置已变更，请更新并重新审核用例。' });
+            }
+          } else {
+            const selected = (await listSkillProfiles()).find(({ id }) => id === (testCase.skillProfile ?? 'none'));
+            if (!selected || !matchesSkillLocks(selected.packs, testCase.skillLocks)) {
+              return json(response, 409, { error: '本机 Skill 包与已审核版本不同，请重新审查配置。' });
+            }
           }
           const run = await runs.createCase(testCase);
           if (!run) return json(response, 409, { error: '已有评测或对照实验正在执行。' });
@@ -161,8 +258,8 @@ export async function startServer({ port = Number(process.env.PORT ?? 4317), run
         }
         const mode = body?.mode;
         const skillMode = body.skillMode ?? 'with';
-        if (mode !== 'codex' && mode !== 'opencode' && mode !== 'demo') {
-          return json(response, 400, { error: '请选择 Codex、OpenCode 或演示。' });
+        if (mode !== 'codex' && mode !== 'demo' && !isProjectAgent(mode)) {
+          return json(response, 400, { error: '请选择 Codex、OpenCode、DeepSeek Harness 或演示。' });
         }
         if (skillMode !== 'with' && skillMode !== 'without') {
           return json(response, 400, { error: '请选择有 Skill 或无 Skill。' });
@@ -203,7 +300,9 @@ export async function startServer({ port = Number(process.env.PORT ?? 4317), run
       return json(response, 404, { error: '找不到此页面。' });
     } catch (error) {
       if (response.headersSent) return response.destroy(error);
-      if ([400, 404, 409].includes(error.status)) return json(response, error.status, { error: error.message });
+      if (error instanceof ModelSettingsError || [400, 404, 409].includes(error.status)) {
+        return json(response, error.status, { error: error.message });
+      }
       console.error(redactLog(error.stack));
       return json(response, 500, { error: '评测台内部错误。' });
     }
@@ -212,7 +311,7 @@ export async function startServer({ port = Number(process.env.PORT ?? 4317), run
     server.once('error', failed);
     server.listen(port, '127.0.0.1', ready);
   });
-  return { server, url: `http://127.0.0.1:${server.address().port}` };
+  return { server, url: `http://127.0.0.1:${server.address().port}`, runTestTarget: runs.createTestTarget };
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

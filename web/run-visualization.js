@@ -1,14 +1,14 @@
 import { checkRunPhase, createRunTiming } from './run-timing.js';
 
 const stages = [
-  ['queue', '调度'], ['prepare', '准备'], ['implement', '实现'], ['verify', '验收'], ['review', '审阅'],
+  ['queue', '排队'], ['prepare', '准备项目'], ['implement', 'Agent 执行'], ['verify', '检查'], ['review', 'AI 建议'],
 ];
 const eventPhases = { run: 'queue', workspace: 'prepare', setup: 'prepare', agent: 'implement', verify: 'verify', advice: 'review' };
 const stageNames = new Map(stages);
 const activeStatuses = new Set(['queued', 'preparing', 'running']);
 const resultLabels = {
   pending: '待开始', running: '进行中', pass: '已完成', error: '未通过',
-  blocked: '已阻塞', skipped: '已跳过', unrecorded: '未记录',
+  blocked: '没能执行', skipped: '已跳过', unrecorded: '未记录',
 };
 const clockFormat = new Intl.DateTimeFormat('zh-CN', { hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -20,11 +20,118 @@ export function isRunTerminalEvent({ kind, phase, status }) {
   return kind === 'run' && phase === 'run' && (status === 'completed' || status === 'error');
 }
 
+export function displayRunStepStatus(run, step, status) {
+  if (run.mode === 'demo' && status === 'blocked' && ['agent', 'skill', 'advice'].includes(step)) return 'skipped';
+  return status;
+}
+
+const failedChecks = new Set(['fail', 'error']);
+const blockedChecks = new Set(['blocked', 'interrupted']);
+const verdictStates = new Map([
+  ['pass', 'pass'], ['passed', 'pass'], ['fail', 'fail'], ['failed', 'fail'], ['blocked', 'blocked'],
+  ['error', 'error'], ['inconclusive', 'unknown'], ['unknown', 'unknown'],
+]);
+
+function completedOutcome(checks, verdict) {
+  if (verdictStates.has(verdict)) return verdictStates.get(verdict);
+  if (checks.some(({ status }) => failedChecks.has(status))) return 'fail';
+  if (checks.some(({ status }) => blockedChecks.has(status))) return 'blocked';
+  if (checks.length && checks.every(({ status }) => status === 'pass')) return 'pass';
+  return 'unknown';
+}
+
+export function summarizeRunOutcome(run) {
+  const checks = (run.checks ?? []).map((check) => ({
+    ...check, status: displayRunStepStatus(run, check.id, check.status),
+  }));
+  const byId = (id) => checks.find((check) => check.id === id);
+  if (run.status === 'queued') return { state: 'queued', title: '排队中', text: '轮到这条用例后会自动开始。', checks: [] };
+  if (activeStatuses.has(run.status)) {
+    const current = checks.find(({ status }) => activeStatuses.has(status));
+    return { state: 'running', title: '正在运行', text: current?.title ? `当前在做「${current.title}」。` : '正在等待本轮的进度。', checks: [] };
+  }
+
+  const verdict = run.testTarget?.verdict ?? run.nativeCase?.verdict;
+  const requiredChecks = run.mode === 'demo' ? checks.filter(({ id, status }) =>
+    !(['agent', 'skill'].includes(id) && status === 'skipped')) : checks;
+  const state = run.status === 'error' ? 'error' : completedOutcome(requiredChecks, verdict);
+  const failed = checks.filter((check) => failedChecks.has(check.status));
+  const blocked = checks.filter((check) => blockedChecks.has(check.status));
+  const first = (items) => items.filter(Boolean).find((check) => check.summary) ?? items.find(Boolean);
+  if (state === 'pass') {
+    const title = verdict ? '符合预期' : '验收通过';
+    const report = byId('honesty');
+    if (report?.status === 'pass' && failedChecks.has(byId('verification')?.status)) {
+      return { state, title, text: '外部验收按预期失败，Agent 如实报告了结果。', checks: [report] };
+    }
+    const completed = checks.filter(({ status }) => status === 'pass');
+    const domainCheck = run.nativeCase && completed.find(({ id }) =>
+      !['workspace', 'agent', 'skill', 'integrity', 'native-expectation'].includes(id));
+    const useful = [byId('approval'), byId('browser'), byId('api'), byId('code'), domainCheck, byId('native-expectation')]
+      .filter((check) => check?.status === 'pass');
+    const proof = first([...useful, ...completed]);
+    return { state, title, text: verdict ? '本轮通过了用例设定的检查。' : `${completed.length} 项检查通过。`, checks: proof ? [proof] : [] };
+  }
+  if (state === 'fail') {
+    // The aggregate check can repeat more specific failures, such as missing Skill evidence.
+    const specific = failed.filter(({ id }) => id !== 'native-expectation');
+    const problems = (specific.length ? specific : failed).slice(0, 2);
+    return { state, title: '未达预期', text: problems.length ? '以下检查未通过。' : '本轮判定为未达预期，可以查看已保存的检查。', checks: problems };
+  }
+  if (state === 'error' || state === 'blocked') {
+    const problem = first([...failed, ...blocked]);
+    const title = state === 'error' ? '运行中断' : '检查无法完成';
+    return { state, title, text: '本轮没有完成判断所需的检查。', checks: problem ? [problem] : [] };
+  }
+  return { state, title: '暂时无法判断', text: '已保存的检查结果还不足以判断这条用例是否通过。', checks: [] };
+}
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text) node.textContent = text;
   return node;
+}
+
+export function createRunOutcome(container, { onCheckSelect } = {}) {
+  container.classList.add('run-outcome');
+  container.setAttribute('aria-labelledby', `${container.id}-title`);
+  const title = element('h3', 'run-outcome-title');
+  title.id = `${container.id}-title`;
+  const text = element('p', 'run-outcome-text');
+  const proof = element('ul', 'run-outcome-proof');
+  container.append(title, text, proof);
+  let signature;
+
+  function update(run) {
+    container.hidden = !run;
+    if (!run) return;
+    const result = summarizeRunOutcome(run);
+    const nextSignature = JSON.stringify([run.id, result.state, result.title, result.text,
+      result.checks.map(({ id, title: name, summary }) => [id, name, summary])]);
+    if (nextSignature === signature) return;
+    signature = nextSignature;
+    container.dataset.state = result.state;
+    setText(title, result.title);
+    setText(text, result.text);
+    proof.hidden = !result.checks.length;
+    proof.replaceChildren(...result.checks.map(({ id, title: name, summary }) => {
+      const item = element('li');
+      const description = element('div');
+      description.append(element('strong', null, name), element('p', null, summary));
+      item.append(description);
+      if (onCheckSelect) {
+        const detail = element('button', 'button secondary compact', '看检查依据');
+        detail.type = 'button';
+        detail.setAttribute('aria-label', `看检查依据，${name}`);
+        detail.addEventListener('click', () => onCheckSelect(id));
+        item.append(detail);
+      }
+      return item;
+    }));
+  }
+
+  return { update };
 }
 
 function setText(node, text) {
@@ -56,7 +163,7 @@ function stageStates(run, phasesByCheck) {
   const grouped = { prepare: [], implement: [], verify: [] };
   const progress = checks.map(({ id, status }, index) => {
     const phase = checkRunPhase(id, index, agentIndex, phasesByCheck);
-    const state = run.mode === 'demo' && phase === 'implement' && status === 'blocked' ? 'skipped' : checkState(status);
+    const state = checkState(displayRunStepStatus(run, id, status));
     grouped[phase].push(state);
     return state;
   });
@@ -66,8 +173,7 @@ function stageStates(run, phasesByCheck) {
       ['queue', run.status === 'queued' ? 'running' : run.startedAt || run.status === 'completed' ? 'pass'
         : run.status === 'error' ? 'error' : 'running'],
       ...Object.entries(grouped).map(([phase, states]) => [phase, summarize(states)]),
-      ['review', run.mode === 'demo' && run.advice?.status === 'blocked' ? 'skipped'
-        : run.advice ? checkState(run.advice.status) : 'unrecorded'],
+      ['review', run.advice ? checkState(displayRunStepStatus(run, 'advice', run.advice.status)) : 'unrecorded'],
     ]),
   };
 }
@@ -185,7 +291,7 @@ export function createRunVisualization(container, { onPhaseSelect } = {}) {
     const value = elapsedTime(currentRun, now);
     const label = currentRun.status === 'queued' ? '排队' : '运行';
     const description = value === '—' ? `${label}耗时未记录` : `${label}耗时 ${value}`;
-    setText(elapsed, value);
+    setText(elapsed, value === '—' ? '耗时未记录' : value);
     elapsed.dataset.label = label;
     if (elapsed.getAttribute('aria-label') !== description) elapsed.setAttribute('aria-label', description);
     const measurement = timing.measure(currentRun, phasesByCheck, now);
@@ -208,8 +314,8 @@ export function createRunVisualization(container, { onPhaseSelect } = {}) {
       setText(duration, lengthMs == null ? '—' : `${measured.partial ? '≥ ' : ''}${durationLabel(lengthMs)}`);
       duration.title = measured ? [
         `起点 +${durationLabel(measured.offsetMs)}`,
-        measured.partial && '截至已记录的活动，没有完整结束时间',
-      ].filter(Boolean).join(' · ') : '';
+        lengthMs == null ? '阶段耗时未记录' : measured.partial && '截至最后一条活动记录',
+      ].filter(Boolean).join(' · ') : '阶段耗时未记录';
       if (!measured) continue;
       setStyle(span, '--span-start', `${length > 0 ? measured.offsetMs / length * 100 : 0}%`);
       setStyle(span, '--span-width', `${length > 0 ? (lengthMs ?? 0) / length * 100 : 0}%`);
@@ -303,8 +409,8 @@ export function createRunVisualization(container, { onPhaseSelect } = {}) {
 
     const phaseName = latest && stageNames.get(runEventPhase(latest));
     const terminalEvent = latest && isRunTerminalEvent(latest);
-    setText(context, terminalEvent ? '运行结果' : phaseName ? `最新 · ${phaseName}` : '执行动态');
-    setText(copy, latest?.summary || (active ? '等待执行事件…' : '暂无事件记录。'));
+    setText(context, terminalEvent ? '结束记录' : phaseName ? `最新 · ${phaseName}` : '执行动态');
+    setText(copy, latest?.summary || (active ? '等待执行事件…' : '时间线暂无记录。已保存的检查和证据仍可查看。'));
     const at = Date.parse(latest?.at);
     time.hidden = !Number.isFinite(at);
     if (!time.hidden) {

@@ -1,3 +1,29 @@
+.run-outcome {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-tint);
+  overflow-wrap: anywhere;
+}
+.run-outcome-title { font-size: 17px; }
+.run-outcome[data-state="pass"] .run-outcome-title { color: var(--green); }
+.run-outcome:is([data-state="fail"], [data-state="error"]) .run-outcome-title { color: var(--ruby); }
+.run-outcome-text, .run-outcome-proof { font-size: 13px; line-height: 1.55; }
+.run-outcome-proof { margin: 0; padding: 0; list-style: none; }
+.run-outcome-proof li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-block: 7px;
+  border-top: 1px solid var(--line);
+}
+.run-outcome-proof li > div { flex: 1 1 250px; min-width: 0; }
+.run-outcome-proof li > div > p { color: var(--muted); }
+
 .run-visualization {
   --viz-surface: #251b27;
   --viz-raised: #302333;
