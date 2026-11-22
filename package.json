@@ -14,5 +14,8 @@
     "eslint": "10.15.0",
     "ignore": "5.3.2",
     "playwright": "1.65.1"
+  },
+  "optionalDependencies": {
+    "opencode-ai": "1.19.6"
   }
 }

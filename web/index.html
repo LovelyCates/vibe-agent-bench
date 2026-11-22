@@ -6,6 +6,7 @@
   <meta name="description" content="对照 Codex 和 OpenCode 在有无 Skill 两种条件下的实现和测试结果。">
   <title>Vibe Agent Bench · 本地评测台</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/run-visualization.css">
   <link rel="stylesheet" href="/workbench-highlight.css">
   <script src="/app.js" type="module"></script>
 </head>
@@ -65,6 +66,13 @@
         </div>
         <div id="comparison-status" role="status"></div>
       </div>
+      <section class="comparison-flow" aria-labelledby="comparison-flow-title">
+        <div class="comparison-flow-heading">
+          <h3 id="comparison-flow-title">执行进度</h3>
+          <p>两个 Agent 并行，各自按顺序完成两组评测。</p>
+        </div>
+        <div class="comparison-lanes" id="comparison-lanes"></div>
+      </section>
       <div class="comparison-scroll" role="region" aria-label="Agent 和 Skill 对照结果" tabindex="0">
         <table class="comparison-table" id="comparison-table"></table>
       </div>
@@ -81,7 +89,7 @@
             <div class="report-actions" id="report-actions"></div>
           </div>
           <p class="sr-only" id="live-status" role="status"></p>
-          <div id="progress"></div>
+          <div id="progress" hidden></div>
           <ul class="checks" id="checks" aria-label="检查项目"></ul>
         </section>
         <section class="panel" aria-labelledby="advice-title">

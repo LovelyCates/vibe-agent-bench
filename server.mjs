@@ -18,6 +18,9 @@ const webFiles = {
   '/benchmark': ['index.html', htmlType],
   '/styles.css': ['styles.css', cssType],
   '/app.js': ['app.js', jsType],
+  '/run-visualization.css': ['run-visualization.css', cssType],
+  '/run-visualization.js': ['run-visualization.js', jsType],
+  '/run-timing.js': ['run-timing.js', jsType],
   '/workbench.css': ['workbench.css', cssType],
   '/workbench.js': ['workbench.js', jsType],
   '/workbench-highlight.js': ['workbench-highlight.js', jsType],
@@ -137,12 +140,13 @@ export async function startServer({ port = Number(process.env.PORT ?? 4317), run
         if (createCase) return json(response, 201, { case: await cases.create(body) });
         if (updateCase) return json(response, 200, { case: await cases.update(caseRoute[1], body) });
         if (startCase) {
+          const skillProfiles = await listSkillProfiles();
           const testCase = cases.get(caseRoute[1]);
           if (!testCase) return json(response, 404, { error: '找不到该评测用例。' });
           if (testCase.version !== body.version || testCase.status !== 'approved') {
             return json(response, 409, { error: '请先审查并通过当前版本。' });
           }
-          const selected = (await listSkillProfiles()).find(({ id }) => id === (testCase.skillProfile ?? 'none'));
+          const selected = skillProfiles.find(({ id }) => id === (testCase.skillProfile ?? 'none'));
           if (!selected || !matchesSkillLocks(selected.packs, testCase.skillLocks)) {
             return json(response, 409, { error: '本机 Skill 包与已审核版本不同，请重新审查配置。' });
           }

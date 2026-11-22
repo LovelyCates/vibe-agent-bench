@@ -1,4 +1,5 @@
 import { highlightedPreview } from './workbench-highlight.js';
+import { createRunVisualization, isRunTerminalEvent } from './run-visualization.js';
 
 const checks = [
   ['agent', 'Agent 产出', '记录 Agent 运行日志和代码差异。', '⌁'],
@@ -21,15 +22,20 @@ const skillSignals = {
   observed: ['pass', '已观察'], verified: ['pass', '已验证'],
   'not-observed': ['pending', '未观察到'], unknown: ['pending', '未知'],
 };
-const experimentArms = [
-  ['codex', 'with'], ['codex', 'without'], ['opencode', 'with'], ['opencode', 'without'],
+const experimentLanePlan = [
+  ['codex', ['with', 'without']],
+  ['opencode', ['without', 'with']],
 ];
+const experimentArms = experimentLanePlan.flatMap(([mode, order]) => order.map((skillMode) => [mode, skillMode]));
 const comparisonChecks = checks.slice(2);
 const activeStates = new Set(['queued', 'running']);
+const terminalRuns = new Set(['completed', 'error']);
 const terminalChecks = new Set(['pass', 'fail', 'blocked', 'error']);
 const byId = (id) => document.getElementById(id);
 const dialog = byId('artifact-dialog');
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium' });
+const runVisualization = createRunVisualization(byId('progress'));
+const comparisonLanes = experimentLanePlan.map(([mode, order]) => createComparisonLane(mode, order));
 
 let runs = [];
 let caseRunActive = false;
@@ -45,6 +51,8 @@ let syncError = '';
 let actionError = '';
 let artifactRequest;
 let artifactTrigger;
+let journal;
+let runListTimer;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -89,7 +97,9 @@ async function request(path, options) {
   const response = await fetch(path, { cache: 'no-store', ...options });
   if (!response.ok) {
     const details = await response.json().catch(() => ({}));
-    throw new Error(details.error || `请求返回 HTTP ${response.status}。`);
+    const error = new Error(details.error || `请求返回 HTTP ${response.status}。`);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -126,7 +136,9 @@ function visibleRun() {
 function experimentStatus(members) {
   if (members.some(({ status }) => status === 'running')) return 'running';
   if (members.some(({ status }) => status === 'queued')) return 'queued';
-  return members.every(({ status }) => status === 'error') ? 'error' : 'completed';
+  const missingArm = experimentArms.some(([mode, skillMode]) =>
+    !members.some((member) => member.mode === mode && member.skillMode === skillMode));
+  return missingArm || members.some(({ status }) => status === 'error') ? 'error' : 'completed';
 }
 
 function renderHistory() {
@@ -194,8 +206,8 @@ function evidenceCell(evidence, kind) {
   return cell;
 }
 
-function reportLink(run) {
-  const link = element('a', 'button button-secondary', '查看报告');
+function reportLink(run, className = 'button button-secondary', label = '查看报告') {
+  const link = element('a', className, label);
   const url = runUrl(run);
   url.hash = 'report-title';
   link.href = url;
@@ -210,6 +222,71 @@ function reportLink(run) {
   return link;
 }
 
+function createComparisonLane(mode, order) {
+  const node = element('section', 'comparison-lane');
+  node.dataset.mode = mode;
+  const heading = element('div', 'comparison-lane-heading');
+  const title = element('h4', null, modeLabels[mode]);
+  title.id = `comparison-lane-${mode}`;
+  node.setAttribute('aria-labelledby', title.id);
+  const summary = element('span', 'comparison-lane-summary');
+  heading.append(title, summary);
+  const list = element('ol', 'comparison-lane-steps');
+  list.setAttribute('role', 'list');
+  const steps = order.map((skillMode) => {
+    const node = element('li', 'comparison-step');
+    const name = element('div', 'comparison-step-name');
+    const badge = stateBadge('pending');
+    const line = element('div', 'comparison-step-heading');
+    line.append(name, badge);
+    const progress = element('progress', 'comparison-step-progress');
+    progress.setAttribute('aria-label', `${modeLabels[mode]} ${skillLabels[skillMode]}检查进度`);
+    const count = element('span', 'comparison-step-caption');
+    node.append(line, progress, count);
+    list.append(node);
+    return { skillMode, node, name, badge, progress, count };
+  });
+  node.append(heading, list);
+  return { mode, node, summary, steps };
+}
+
+function comparisonArmState(run, status) {
+  if (run) return [run.status, labels[run.status]];
+  return activeStates.has(status) ? ['pending', '待记录'] : ['error', '缺少记录'];
+}
+
+function renderComparisonLanes(arms, status) {
+  for (const lane of comparisonLanes) {
+    let finished = 0;
+    for (const step of lane.steps) {
+      const run = arms.get(`${lane.mode}-${step.skillMode}`);
+      const [state, label] = comparisonArmState(run, status);
+      const selected = Boolean(run && run.id === selectedId);
+      const total = run?.checks.length ?? 0;
+      const checked = run?.checks.filter(({ status }) => terminalChecks.has(status)).length ?? 0;
+      if (terminalRuns.has(run?.status)) finished += 1;
+      step.node.dataset.state = state;
+      step.node.toggleAttribute('data-selected', selected);
+      if (!step.name.firstChild || step.name.firstChild.dataset.runId !== run?.id) {
+        const title = skillLabels[step.skillMode];
+        step.name.replaceChildren(run ? reportLink(run, 'comparison-step-link', title) : element('span', null, title));
+      }
+      const link = step.name.querySelector('a');
+      if (selected) link?.setAttribute('aria-current', 'true');
+      else link?.removeAttribute('aria-current');
+      step.badge.dataset.state = state;
+      if (step.badge.textContent !== label) step.badge.textContent = label;
+      step.progress.hidden = total === 0;
+      step.progress.max = total || 1;
+      step.progress.value = checked;
+      const caption = run ? `已检查 ${checked} / ${total} 项` : '';
+      step.count.hidden = !run;
+      if (step.count.textContent !== caption) step.count.textContent = caption;
+    }
+    lane.summary.textContent = `${finished} / ${lane.steps.length} 组已结束`;
+  }
+}
+
 function renderComparison() {
   const container = byId('comparison');
   const members = selectedExperimentId ? runs.filter(({ experimentId }) => experimentId === selectedExperimentId) : [];
@@ -222,10 +299,16 @@ function renderComparison() {
   if (key === comparisonKey) return;
   comparisonKey = key;
 
-  const finished = members.filter(({ status }) => !activeStates.has(status)).length;
+  const arms = new Map(experimentArms.map(([mode, skillMode]) => [
+    `${mode}-${skillMode}`, members.find((member) => member.mode === mode && member.skillMode === skillMode),
+  ]));
+  const finished = [...arms.values()].filter((run) => terminalRuns.has(run?.status)).length;
   const date = members.at(-1).createdAt;
+  const status = experimentStatus(members);
   byId('comparison-meta').textContent = `${dateLabel(date)} · 已结束 ${finished} / ${experimentArms.length} 组`;
-  byId('comparison-status').replaceChildren(stateBadge(experimentStatus(members)));
+  const statusContainer = byId('comparison-status');
+  if (statusContainer.firstElementChild?.dataset.state !== status) statusContainer.replaceChildren(stateBadge(status));
+  renderComparisonLanes(arms, status);
   const table = byId('comparison-table');
   const focused = table.contains(document.activeElement) ? document.activeElement.dataset.runId : undefined;
   const head = element('thead');
@@ -236,13 +319,14 @@ function renderComparison() {
 
   const body = element('tbody');
   for (const [mode, skillMode] of experimentArms) {
-    const run = members.find((member) => member.mode === mode && member.skillMode === skillMode);
+    const run = arms.get(`${mode}-${skillMode}`);
     const row = element('tr');
     row.dataset.arm = `${mode}-${skillMode}`;
     if (run && run.id === selectedId) row.dataset.selected = '';
     const group = tableHeading(modeLabels[mode], 'row');
     group.append(element('span', 'muted-caption', skillLabels[skillMode]));
-    row.append(group, tableCell(stateBadge(run?.status ?? 'pending', run ? undefined : '待记录')));
+    const recordedStatus = stateBadge(...comparisonArmState(run, status));
+    row.append(group, tableCell(recordedStatus));
     row.append(evidenceCell(run?.skillEvidence, 'activation'), evidenceCell(run?.skillEvidence, 'read'));
     const outcomes = new Map(run?.checks.map(({ id, status }) => [id, status]));
     for (const [id] of comparisonChecks) row.append(tableCell(stateBadge(outcomes.get(id) ?? 'pending')));
@@ -253,24 +337,50 @@ function renderComparison() {
   if (focused) Array.from(table.querySelectorAll('a')).find((link) => link.dataset.runId === focused)?.focus({ preventScroll: true });
 }
 
-function renderProgress(run) {
-  const container = byId('progress');
-  if (!run) {
-    container.replaceChildren();
+function syncRunVisualization(run) {
+  if (journal?.run.id === run?.id) {
+    if (journal && journal.run !== run) {
+      journal.run = run;
+      runVisualization.update(run, [], { disconnected: journal.disconnected });
+    }
     return;
   }
 
-  const pass = run.checks.filter((check) => check.status === 'pass').length;
-  const finished = run.checks.filter((check) => terminalChecks.has(check.status)).length;
-  const block = element('div', 'progress-block');
-  const label = element('div', 'progress-label');
-  label.append(element('span', null, `已检查 ${finished} / ${run.checks.length}`), element('span', null, `${pass} 项通过`));
-  const progress = element('progress', 'progress-bar');
-  progress.max = run.checks.length || 1;
-  progress.value = finished;
-  progress.setAttribute('aria-label', '检查进度');
-  block.append(label, progress);
-  container.replaceChildren(block);
+  journal?.controller.abort();
+  window.clearTimeout(journal?.timer);
+  journal = run && { run, controller: new AbortController(), cursor: 0, terminalReads: 0, disconnected: false };
+  runVisualization.update(run ?? null);
+  if (journal) void pollJournal(journal);
+}
+
+async function pollJournal(subscription) {
+  const { controller, run: { id } } = subscription;
+  if (controller.signal.aborted) return;
+  let delay = 550;
+  try {
+    const path = `/api/runs/${encodeURIComponent(id)}/events?after=${subscription.cursor}`;
+    const { events, status } = await request(path, { signal: controller.signal });
+    if (controller.signal.aborted) return;
+    const entries = [];
+    for (const entry of events.sort((a, b) => a.seq - b.seq)) {
+      if (!Number.isSafeInteger(entry.seq) || entry.seq <= subscription.cursor) continue;
+      entries.push(entry);
+      subscription.cursor = entry.seq;
+    }
+    subscription.disconnected = false;
+    runVisualization.update(subscription.run, entries);
+    if (entries.some(isRunTerminalEvent)) return;
+    if (entries.length || activeStates.has(status) || activeStates.has(subscription.run.status)) subscription.terminalReads = 0;
+    // The final snapshot is visible before the corresponding journal entry is appended.
+    else if (++subscription.terminalReads >= 3) return;
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    subscription.disconnected = true;
+    runVisualization.update(subscription.run, [], { disconnected: true });
+    if (error.status && error.status < 500 && error.status !== 408 && error.status !== 429) return;
+    delay = activeStates.has(subscription.run.status) ? 1200 : 3200;
+  }
+  subscription.timer = window.setTimeout(() => pollJournal(subscription), delay);
 }
 
 function openArtifact(run, artifact, trigger) {
@@ -430,7 +540,6 @@ function renderReport(run, busy) {
     actions.replaceChildren(stateBadge('pending', '待开始'));
   }
 
-  renderProgress(run);
   renderChecks(run);
   renderAdvice(run);
   const live = byId('live-status');
@@ -447,7 +556,9 @@ function render() {
   if (notice.textContent !== error) notice.textContent = error;
   renderHistory();
   renderComparison();
-  renderReport(runs.find((run) => run.id === selectedId), busy);
+  const run = runs.find((run) => run.id === selectedId);
+  syncRunVisualization(run);
+  renderReport(run, busy);
 }
 
 async function launch({ mode, skillMode, comparison = false }) {
@@ -475,10 +586,15 @@ async function launch({ mode, skillMode, comparison = false }) {
     revision += 1;
     creating = false;
     render();
+    if (activeRun() && runListTimer !== undefined) {
+      window.clearTimeout(runListTimer);
+      runListTimer = window.setTimeout(poll, 0);
+    }
   }
 }
 
 async function poll() {
+  runListTimer = undefined;
   const currentRevision = revision;
   try {
     const result = await request('/api/runs');
@@ -498,7 +614,7 @@ async function poll() {
     if (currentRevision === revision) syncError = `无法更新运行记录。${error.message}`;
   } finally {
     render();
-    window.setTimeout(poll, activeRun() ? 1100 : 3200);
+    runListTimer = window.setTimeout(poll, activeRun() ? 900 : 3200);
   }
 }
 
@@ -518,5 +634,6 @@ dialog.addEventListener('close', () => {
   const trigger = Array.from(document.querySelectorAll('button[data-artifact]')).find((control) => control.dataset.artifact === artifactTrigger?.dataset.artifact);
   (trigger ?? byId('report-title')).focus();
 });
+byId('comparison-lanes').append(...comparisonLanes.map(({ node }) => node));
 render();
 poll();

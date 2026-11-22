@@ -1,4 +1,5 @@
 import { highlightedPreview } from './workbench-highlight.js';
+import { createRunVisualization, isRunTerminalEvent, runEventPhase } from './run-visualization.js';
 
 const byId = (id) => document.getElementById(id);
 const labels = {
@@ -7,7 +8,14 @@ const labels = {
   blocked: '阻塞', error: '异常', interrupted: '已中断', skipped: '已跳过',
 };
 const phases = { run: '调度', workspace: '准备工作副本', setup: '准备命令', agent: 'OpenCode', verify: '验收', advice: '修复建议' };
+const eventKinds = {
+  run: ['运行', 'history'], phase: ['阶段', 'layers'], check: ['检查', 'list'],
+  command: ['命令', 'terminal'], 'command-output': ['命令输出', 'terminal'], tool: ['工具', 'code'],
+  skill: ['Skill', 'layers'], step: ['步骤', 'activity'], message: ['消息', 'file'],
+  notice: ['提示', 'activity'], error: ['错误', 'cross'],
+};
 const sampleChecks = ['代码规范', '后端启动', '前端启动', 'API 行为', '页面联调', '测试辨别力'];
+const editTools = new Set(['apply_patch', 'edit', 'multiedit', 'write']);
 const active = new Set(['queued', 'running', 'preparing']);
 const pending = new Set(['pending', ...active]);
 const dateStyle = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
@@ -18,6 +26,10 @@ const draftEdits = new Map();
 const runs = new Map();
 const caseList = byId('case-list');
 const eventsList = byId('events');
+const eventFilter = byId('event-filter');
+const eventSearch = byId('event-search');
+const eventSearchText = new WeakMap();
+const runVisualization = createRunVisualization(byId('run-visualization'), { onPhaseSelect: showPhaseEvents });
 const dialog = byId('artifact-dialog');
 const route = new URL(location.href);
 let cases = [];
@@ -36,11 +48,15 @@ let notice = '';
 let pollError = '';
 let pollTimer;
 let pollController;
+let missingRun = false;
 let cursor = 0;
 let finalSignature = '';
+let historySignature;
 let seenActive = false;
 let seenEnd = false;
 let finalReads = 0;
+let deferredEvents = [];
+let evidenceEvents = [];
 let previewController;
 let previewTrigger;
 
@@ -103,7 +119,11 @@ async function api(path, { method = 'GET', body, signal } = {}) {
     ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `请求返回 HTTP ${response.status}。`);
+  if (!response.ok) {
+    const error = new Error(data.error || `请求返回 HTTP ${response.status}。`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -403,11 +423,26 @@ function renderReviewActions() {
 }
 
 function renderHistory() {
-  const entries = newestRuns().filter((run) => run.caseId);
+  const entries = newestRuns().filter((run) => run.caseId).map((run) => {
+    const profile = skillProfiles.find(({ id }) => id === run.skillProfile);
+    const details = [`v${run.caseVersion}`, run.scenario || run.skillProfile !== 'none' ? profile?.title : '',
+      formatTime(run.startedAt || run.createdAt)].filter(Boolean).join(' · ');
+    return { run, details };
+  });
+  const signature = JSON.stringify(entries.map(({ run, details }) => [
+    run.id, run.caseId, run.caseTitle, details, run.status,
+    run.status === 'completed' && run.checks?.map(({ status }) => status),
+  ]));
+  if (signature === historySignature) return;
+  historySignature = signature;
+
   byId('history-count').textContent = `共 ${entries.length} 次运行`;
+  const container = byId('history-list');
+  const focused = container.contains(document.activeElement) ? document.activeElement.dataset.runId : undefined;
   const list = document.createDocumentFragment();
-  for (const run of entries) {
+  for (const { run, details } of entries) {
     const link = element('a', 'history-run');
+    link.dataset.runId = run.id;
     link.href = `/?${new URLSearchParams({ case: run.caseId, run: run.id })}`;
     link.addEventListener('click', (event) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -415,15 +450,16 @@ function renderHistory() {
       chooseCase(run.caseId, run.id, { focusExecution: true });
     });
     const copy = element('span');
-    const profile = skillProfiles.find(({ id }) => id === run.skillProfile);
-    const details = [`v${run.caseVersion}`, run.scenario || run.skillProfile !== 'none' ? profile?.title : '',
-      formatTime(run.startedAt || run.createdAt)].filter(Boolean).join(' · ');
     copy.append(element('strong', null, run.caseTitle), element('small', null, details));
     link.append(copy, runBadge(run));
     list.append(link);
   }
   if (!entries.length) list.append(element('p', 'empty-small', '还没有单用例评测记录。'));
-  byId('history-list').replaceChildren(list);
+  container.replaceChildren(list);
+  if (focused) {
+    const replacement = [...container.children].find((link) => link.dataset.runId === focused);
+    (replacement ?? byId('history-title')).focus({ preventScroll: true });
+  }
 }
 
 function setBusy(action) {
@@ -610,6 +646,159 @@ function artifactActions(run, artifacts = []) {
   return nodes;
 }
 
+function focusCheck(id) {
+  const row = byId(`check-${id}`);
+  row?.focus({ preventScroll: true });
+  row?.scrollIntoView({ block: 'nearest' });
+}
+
+function focusEvidenceEvent(seq) {
+  eventFilter.value = 'all';
+  eventSearch.value = '';
+  applyEventFilter();
+  const row = eventsList.querySelector(`[data-seq="${seq}"]`);
+  if (!row) return;
+  row.tabIndex = -1;
+  row.focus({ preventScroll: true });
+  row.scrollIntoView({ block: 'nearest' });
+}
+
+function evidenceButton(label, key, action) {
+  const control = button(label, 'artifact-link', action);
+  control.dataset.evidenceAction = key;
+  return control;
+}
+
+function evidenceCard(title, symbol) {
+  const card = element('div', 'output-evidence-card');
+  const heading = element('h4');
+  heading.append(icon(symbol), title);
+  card.append(heading);
+  return card;
+}
+
+function isEvidenceEvent(entry) {
+  return (entry.kind === 'phase' && entry.checkId === 'skill')
+    || (entry.kind === 'tool' && entry.status === 'completed' && (entry.tool === 'skill' || editTools.has(entry.tool)));
+}
+
+function showsVerifiedRead(entry) {
+  return entry.summary?.startsWith('已验证读取 · ');
+}
+
+function editPaths(entry) {
+  const paths = entry.summary?.split(' · ')[1] ?? '';
+  return paths.replace(/ 等 \d+ 个文件$/u, '').split('、').filter(Boolean);
+}
+
+function renderEvidenceSequence(reads, edits) {
+  const section = byId('output-evidence-sequence');
+  const first = reads[0];
+  const subsequent = first && edits.find(({ seq }) => seq > first.seq);
+  section.hidden = !subsequent;
+  if (!subsequent) {
+    section.replaceChildren();
+    return;
+  }
+  const order = element('ul', 'output-evidence-order');
+  const add = (label, read, edit, paths) => {
+    const item = element('li');
+    item.append(element('strong', null, label));
+    for (const [caption, entry] of [['读取', read], ['编辑', edit]]) {
+      if (caption === '编辑') item.append(element('span', null, '先于'));
+      const control = evidenceButton(`${caption} #${entry.seq}`, `event-${label}-${entry.seq}`, () => focusEvidenceEvent(entry.seq));
+      control.setAttribute('aria-label', `${caption}事件 ${entry.seq}，${entry.summary}`);
+      control.title = entry.summary;
+      item.append(control);
+    }
+    if (paths.length) item.append(element('span', 'output-evidence-file', paths.map((path) => path.split('/').at(-1)).join('、')));
+    order.append(item);
+  };
+  for (const [label, name, extension] of [['Java', 'java-development', '.java'], ['Vue', 'vue-best-practices', '.vue']]) {
+    const read = reads.find(({ summary }) => summary === `已验证读取 · ${name}`);
+    const edit = read && edits.find((entry) => entry.seq > read.seq && editPaths(entry).some((path) => path.endsWith(extension)));
+    if (edit) add(label, read, edit, editPaths(edit).filter((path) => path.endsWith(extension)));
+  }
+  if (!order.childElementCount) add('本轮', first, subsequent, editPaths(subsequent));
+  section.replaceChildren(element('p', null, '观察到的顺序，仅说明事件先后。'), order);
+}
+
+function renderOutputEvidence(run) {
+  const container = byId('output-evidence-cards');
+  const section = container.parentElement;
+  const focused = section.contains(document.activeElement) ? document.activeElement.dataset : {};
+  const checks = run.checks ?? [];
+  const skillCheck = checks.find(({ id }) => id === 'skill');
+  const agentIndex = checks.findIndex(({ id }) => id === 'agent');
+  const agentCheck = checks[agentIndex];
+  const acceptance = agentIndex < 0 ? [] : checks.slice(agentIndex + 1).filter(({ id }) => id !== 'skill');
+  const proof = skillCheck?.artifacts?.find(({ file }) => file === 'skill-proof.json');
+  const diff = agentCheck?.artifacts?.find(({ file }) => file === 'candidate.diff');
+  const inventory = evidenceEvents.find(({ kind, checkId }) => kind === 'phase' && checkId === 'skill');
+  const calls = evidenceEvents.filter(({ tool }) => tool === 'skill');
+  const reads = calls.filter(showsVerifiedRead);
+  const edits = evidenceEvents.filter(({ tool }) => editTools.has(tool));
+  const packages = run.skillEvidence?.packs ?? [];
+  const running = active.has(run.status);
+
+  const skill = evidenceCard('规范加载', 'layers');
+  if (packages.some(({ skills }) => skills.length)) {
+    const packs = element('ul', 'output-evidence-packs');
+    for (const pack of packages) {
+      const loaded = pack.skills.filter(({ loaded }) => loaded).length;
+      const verified = pack.skills.filter(({ verified }) => verified).length;
+      const discovered = pack.skills.filter(({ discovered }) => discovered).length;
+      const count = pack.skills.length ? `发现 ${discovered}/${pack.skills.length} · 加载 ${loaded} · 验证 ${verified}` : '发现未记录';
+      packs.append(element('li', null, `${pack.title} · ${count}`));
+    }
+    skill.append(packs);
+  } else if (calls.length || inventory) {
+    if (inventory) skill.append(element('p', null, inventory.summary));
+    skill.append(element('p', null, `原生加载 ${calls.length} 次 · 正文验证 ${reads.length} 次`));
+  } else if (run.skillEvidence?.read === 'verified') {
+    skill.append(element('p', null, 'Skill 正文读取已验证。'));
+  } else if (run.skillProfile === 'none') {
+    skill.append(element('p', null, '本轮未配置 Skill。'));
+  } else {
+    const profile = skillProfiles.find(({ id }) => id === run.skillProfile);
+    skill.append(element('p', null, [profile?.title, running ? '等待发现与加载' : '未记录发现与加载'].filter(Boolean).join(' · ')));
+  }
+  if (proof) skill.append(artifactActions(run, [proof]));
+  else if (calls.length || inventory) {
+    skill.append(evidenceButton('查看 Skill 事件', 'skill-events', () => focusEvidenceEvent((reads[0] ?? calls[0] ?? inventory).seq)));
+  }
+
+  const changes = evidenceCard('代码改动', 'code');
+  changes.append(element('p', null, edits.length ? `观察到 ${edits.length} 次已完成的编辑调用`
+    : running ? '等待编辑事件' : '未记录编辑工具完成事件'));
+  if (diff) changes.append(artifactActions(run, [diff]));
+  else if (edits.length) changes.append(evidenceButton('查看首个编辑事件', 'first-edit', () => focusEvidenceEvent(edits[0].seq)));
+
+  const verification = evidenceCard('独立验收', 'check');
+  const totals = { pass: 0, fail: 0, blocked: 0, skipped: 0, running: 0, pending: 0 };
+  for (const { status } of acceptance) {
+    const outcome = status === 'error' ? 'fail' : status === 'interrupted' ? 'blocked' : status;
+    totals[Object.hasOwn(totals, outcome) ? outcome : 'pending']++;
+  }
+  if (acceptance.length) {
+    const outcomes = element('div', 'output-evidence-counts');
+    for (const [outcome, label] of [['pass', '通过'], ['fail', '未通过'], ['blocked', '阻塞'], ['skipped', '跳过'], ['running', '进行中'], ['pending', '待验收']]) {
+      if (totals[outcome]) outcomes.append(badge(outcome, `${label} ${totals[outcome]}`));
+    }
+    verification.append(outcomes, evidenceButton('查看验收检查', 'verification', () => focusCheck(acceptance[0].id)));
+  } else {
+    verification.append(element('p', null, '无独立验收记录。'));
+  }
+
+  container.replaceChildren(skill, changes, verification);
+  renderEvidenceSequence(reads, edits);
+  if (focused.artifact || focused.evidenceAction) {
+    [...section.querySelectorAll('button')].find(({ dataset }) =>
+      (focused.artifact && dataset.artifact === focused.artifact)
+      || (focused.evidenceAction && dataset.evidenceAction === focused.evidenceAction))?.focus({ preventScroll: true });
+  }
+}
+
 function renderChecks(run) {
   const list = byId('checks');
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
@@ -635,7 +824,8 @@ function renderChecks(run) {
         const discovered = pack.skills.filter(({ discovered }) => discovered).length;
         const observed = pack.skills.filter(({ loaded }) => loaded);
         const verified = observed.filter(({ verified }) => verified).length;
-        item.append(heading, element('p', 'skill-pack-evidence', `发现 ${discovered}/${pack.skills.length} · 加载 ${observed.length} · 正文验证 ${verified}`));
+        const count = pack.skills.length ? `发现 ${discovered}/${pack.skills.length} · 加载 ${observed.length} · 正文验证 ${verified}` : '发现未记录';
+        item.append(heading, element('p', 'skill-pack-evidence', count));
         const seals = element('div', 'skill-run-seals');
         for (const skill of observed) {
           const seal = element('span', 'skill-run-seal', skill.name);
@@ -667,58 +857,115 @@ function renderChecks(run) {
 
 function addEvents(run, entries, live) {
   const fragment = document.createDocumentFragment();
-  const following = eventsList.scrollHeight - eventsList.scrollTop - eventsList.clientHeight < 35;
+  const following = followingTimeline();
+  const filter = eventFilter.value;
+  const query = eventSearch.value.trim().toLowerCase();
   for (const entry of entries) {
     const row = element('li', 'event');
     row.dataset.seq = String(entry.seq);
     row.dataset.state = entry.status ?? '';
+    row.dataset.stream = entry.stream ?? '';
+    const isSkill = entry.tool === 'skill' || entry.checkId === 'skill';
+    const kind = isSkill ? 'skill' : entry.kind;
+    const [kindLabel, marker] = Object.hasOwn(eventKinds, kind) ? eventKinds[kind] : ['事件', 'activity'];
+    row.dataset.kind = kind ?? '';
     const groups = [];
     if (entry.kind === 'tool' && entry.phase === 'agent') groups.push('agent');
-    if (entry.phase === 'verify') groups.push('verify');
-    if (entry.tool === 'skill' || entry.checkId === 'skill') groups.push('skill');
+    const phase = runEventPhase(entry);
+    if (phase) groups.push(`phase-${phase}`);
+    if (isSkill) groups.push('skill');
     if (entry.kind === 'command-output' || (entry.tool === 'bash' && entry.detail)) groups.push('output');
     row.dataset.groups = groups.join(' ');
-    row.hidden = !matchesEvent(row);
     const time = element('time', null, formatTime(entry.at, timeStyle));
     if (entry.at) time.dateTime = entry.at;
-    const dot = element('span', 'event-dot');
-    dot.setAttribute('aria-hidden', 'true');
     const copy = element('div', 'event-copy');
     const tag = phases[entry.phase];
     const length = duration(entry.durationMs);
-    const context = [tag, entry.stream, length].filter(Boolean).join(' · ');
-    copy.append(element('strong', null, entry.summary || labels[entry.status] || tag || '执行事件'));
-    if (context) copy.append(element('p', null, context));
-    if (entry.detail != null && entry.detail !== '') {
+    const status = labels[entry.status];
+    const summary = entry.summary || status || tag || '执行事件';
+    const context = [tag, entry.stream, length].filter(Boolean);
+    const metadata = element('div', 'event-meta');
+    const type = element('span', 'event-kind');
+    type.append(icon(marker), element('span', null, kindLabel));
+    metadata.append(type);
+    if (context.length) metadata.append(element('span', 'event-context', context.join(' · ')));
+    if (status) metadata.append(element('span', 'event-status', status));
+    copy.append(metadata, element('strong', 'event-summary', summary));
+    const detailText = typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail, null, 2);
+    if (entry.detail != null && detailText) {
       const detail = element('details');
       detail.append(element('summary', null, entry.stream ? '查看输出' : '查看详情'));
       detail.addEventListener('toggle', () => {
-        if (!detail.open || detail.childElementCount > 1) return;
-        const text = typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail, null, 2);
-        const filename = typeof entry.detail === 'string' ? 'terminal' : 'detail.json';
-        detail.append(highlightedPreview(text, filename, { maxLines: 120, maxChars: 18_000 }));
+        if (detail.open && detail.childElementCount === 1) {
+          const filename = typeof entry.detail === 'string' ? 'terminal' : 'detail.json';
+          detail.append(highlightedPreview(detailText, filename, { maxLines: 120, maxChars: 18_000 }));
+        }
+        updateTimelineLatest();
       });
       copy.append(detail);
     }
-    if (entry.artifacts?.length) copy.append(artifactActions(run, entry.artifacts));
-    row.append(time, dot, copy);
+    const artifacts = entry.artifacts ?? [];
+    if (artifacts.length) copy.append(artifactActions(run, artifacts));
+    eventSearchText.set(row, [
+      time.textContent, kindLabel, kind, summary, ...context, status, entry.status, entry.tool, detailText,
+      ...artifacts.flatMap((artifact) => [artifact?.file, artifact?.label]),
+    ].filter(Boolean).join(' ').toLowerCase());
+    row.hidden = !matchesEvent(row, filter, query);
+    row.append(time, copy);
     fragment.append(row);
   }
   eventsList.append(fragment);
   renderEventEmpty();
   if (following && live) eventsList.scrollTop = eventsList.scrollHeight;
+  updateTimelineLatest();
 }
 
-function matchesEvent(row) {
-  const filter = byId('event-filter').value;
-  return filter === 'all' || row.dataset.groups.split(' ').includes(filter);
+function matchesEvent(row, filter, query) {
+  return (filter === 'all' || row.dataset.groups.split(' ').includes(filter))
+    && (!query || eventSearchText.get(row).includes(query));
+}
+
+function followingTimeline() {
+  return eventsList.scrollHeight - eventsList.scrollTop - eventsList.clientHeight < 35;
+}
+
+function updateTimelineLatest() {
+  byId('timeline-latest').hidden = followingTimeline();
+}
+
+function applyEventFilter() {
+  const filter = eventFilter.value;
+  const query = eventSearch.value.trim().toLowerCase();
+  for (const row of eventsList.children) row.hidden = !matchesEvent(row, filter, query);
+  renderEventEmpty();
+  eventsList.scrollTop = 0;
+  updateTimelineLatest();
+}
+
+function focusTimeline() {
+  const title = byId('events-title');
+  title.focus({ preventScroll: true });
+  title.scrollIntoView({ block: 'nearest' });
+}
+
+function showPhaseEvents(phase) {
+  eventFilter.value = `phase-${phase}`;
+  applyEventFilter();
+  focusTimeline();
 }
 
 function renderEventEmpty() {
   const empty = byId('events-empty');
-  empty.hidden = Boolean(eventsList.querySelector(':scope > :not([hidden])'));
+  const total = eventsList.childElementCount;
+  const visible = total - eventsList.querySelectorAll(':scope > [hidden]').length;
+  const count = byId('event-count');
+  const countText = visible === total ? `${total} 条事件` : `${visible} / ${total} 条事件`;
+  if (count.textContent !== countText) count.textContent = countText;
+  empty.hidden = visible > 0;
+  eventsList.hidden = !empty.hidden;
   if (empty.hidden) return;
-  empty.textContent = byId('event-filter').value !== 'all' ? '此分类暂时没有事件。'
+  empty.textContent = eventSearch.value.trim() ? '没有匹配的事件。'
+    : eventFilter.value !== 'all' ? '此分类暂时没有事件。'
     : active.has(selectedRun()?.status) ? '等待执行事件…' : '这次运行暂时没有事件。';
 }
 
@@ -742,10 +989,7 @@ function renderAdvice(run) {
     for (const id of item.evidenceIds ?? []) {
       const check = run.checks.find((entry) => entry.id === id);
       if (!check) continue;
-      references.append(button(check.title, 'artifact-link', () => {
-        byId(`check-${check.id}`)?.focus({ preventScroll: true });
-        byId(`check-${check.id}`)?.scrollIntoView({ block: 'nearest' });
-      }));
+      references.append(button(check.title, 'artifact-link', () => focusCheck(check.id)));
     }
     if (references.children.length) finding.append(references);
     body.append(finding);
@@ -753,37 +997,32 @@ function renderAdvice(run) {
   byId('advice-content').replaceChildren(body);
 }
 
-function renderExecution() {
+function renderExecution(entries = []) {
   const run = selectedRun();
+  runVisualization.update(run, entries, { disconnected: Boolean(pollError) });
   byId('execution-empty').hidden = Boolean(run);
-  byId('execution-empty').lastElementChild.textContent = runId ? '正在读取这次运行…' : '运行已审核的用例后，检查结果会出现在这里。';
+  byId('execution-empty').lastElementChild.textContent = missingRun ? '找不到这次运行。'
+    : runId ? '正在读取这次运行…' : '运行已审核的用例后，检查结果会出现在这里。';
   byId('execution-body').hidden = !run;
   if (!run) {
     byId('execution-meta').textContent = '执行后会逐项显示状态、耗时和证据。';
     byId('execution-state').replaceChildren();
     return;
   }
-  byId('event-live').hidden = !active.has(run.status);
+  byId('event-live').hidden = !active.has(run.status) || Boolean(pollError);
+  const newEvidence = entries.filter(isEvidenceEvent);
+  evidenceEvents.push(...newEvidence);
   const key = JSON.stringify(run);
+  if (key !== finalSignature || newEvidence.length) renderOutputEvidence(run);
   if (key === finalSignature) return;
   finalSignature = key;
   const checks = run.checks ?? [];
   const done = checks.filter((check) => !pending.has(check.status)).length;
-  const pass = checks.filter((check) => check.status === 'pass').length;
-  const failed = checks.filter((check) => ['fail', 'error'].includes(check.status)).length;
-  const blocked = checks.filter((check) => ['blocked', 'skipped'].includes(check.status)).length;
-  const current = checks.find((check) => check.status === 'running');
-  const elapsed = run.finishedAt && run.startedAt ? duration(Date.parse(run.finishedAt) - Date.parse(run.startedAt)) : '';
   byId('execution-state').replaceChildren(runBadge(run));
   const profile = skillProfiles.find(({ id }) => id === run.skillProfile);
   byId('execution-meta').textContent = [run.caseTitle, `v${run.caseVersion}`, 'OpenCode',
-    run.scenario || run.skillProfile !== 'none' ? profile?.title : '', formatTime(run.startedAt || run.createdAt), elapsed].filter(Boolean).join(' · ');
+    run.scenario || run.skillProfile !== 'none' ? profile?.title : '', formatTime(run.startedAt || run.createdAt)].filter(Boolean).join(' · ');
   byId('execution-meta').title = run.id;
-  byId('progress-text').textContent = current?.title || (run.advice?.status === 'running' ? '正在生成修复建议' : labels[run.status]);
-  byId('progress-count').textContent = [`已完成 ${done} / ${checks.length}`, `通过 ${pass}`,
-    failed && `未通过 ${failed}`, blocked && `阻塞 ${blocked}`].filter(Boolean).join(' · ');
-  byId('progress').max = checks.length || 1;
-  byId('progress').value = done;
   const live = `${labels[run.status]}。${done} 项检查已完成。`;
   if (byId('execution-live').textContent !== live) byId('execution-live').textContent = live;
   renderEventEmpty();
@@ -798,14 +1037,19 @@ function selectRun(next) {
   pollController?.abort();
   pollController = undefined;
   pollError = '';
+  missingRun = false;
   cursor = 0;
   finalSignature = '';
   seenActive = active.has(selectedRun()?.status);
   seenEnd = false;
   finalReads = 0;
+  deferredEvents = [];
+  evidenceEvents = [];
   eventsList.replaceChildren();
-  byId('event-filter').value = 'all';
-  byId('events-empty').hidden = false;
+  eventFilter.value = 'all';
+  eventSearch.value = '';
+  renderEventEmpty();
+  updateTimelineLatest();
   updateNotice();
   renderExecution();
   if (!runId) return;
@@ -821,22 +1065,28 @@ async function refreshRun(id, signal) {
   if (signal.aborted) return;
   const wasActive = seenActive || active.has(runs.get(id)?.status);
   if (report.status === 'fulfilled') runs.set(id, report.value.run);
+  missingRun = report.status === 'rejected' && report.reason.status === 404;
+  if (missingRun) runs.delete(id);
   const run = runs.get(id);
   const running = active.has(run?.status) || active.has(journal.value?.status);
-  renderExecution();
+  const holdTerminal = active.has(run?.status);
+  const unseen = run && !holdTerminal ? deferredEvents : [];
+  if (!holdTerminal) deferredEvents = [];
   if (journal.status === 'fulfilled' && run) {
     const entries = (journal.value.events ?? []).filter((entry) => Number.isSafeInteger(entry.seq)).sort((a, b) => a.seq - b.seq);
-    const unseen = [];
     for (const entry of entries) {
       if (entry.seq <= cursor) continue;
-      unseen.push(entry);
       cursor = entry.seq;
-      if (entry.kind === 'run' && entry.phase === 'run' && entry.status && !pending.has(entry.status)) seenEnd = true;
+      if (isRunTerminalEvent(entry)) seenEnd = true;
+      (holdTerminal && seenEnd ? deferredEvents : unseen).push(entry);
     }
-    addEvents(run, unseen, wasActive || running);
   }
-  const failure = [report, journal].find((result) => result.status === 'rejected');
-  pollError = failure ? `暂时无法更新执行记录。${failure.reason.message}` : '';
+  const failures = [report, journal].filter((result) => result.status === 'rejected');
+  const retryable = failures.some(({ reason: { status } }) => !status || status === 408 || status === 429 || status >= 500);
+  pollError = missingRun ? report.reason.message
+    : failures.length ? `暂时无法更新执行记录。${failures[0].reason.message}` : '';
+  renderExecution(unseen);
+  if (unseen.length) addEvents(run, unseen, wasActive || running);
   updateNotice();
   renderReviewActions();
   if (historyView) renderHistory();
@@ -844,8 +1094,8 @@ async function refreshRun(id, signal) {
   // The final event can be appended after the state snapshot changes to completed.
   const draining = seenActive && !seenEnd && (!run?.finishedAt || finalReads < 3);
   if (!running && draining && run?.finishedAt) finalReads += 1;
-  if (running || draining) {
-    pollTimer = setTimeout(() => refreshRun(id, signal), failure ? 1200 : 500);
+  if (!missingRun && (running || draining || retryable)) {
+    pollTimer = setTimeout(() => refreshRun(id, signal), failures.length ? 1200 : 500);
   }
 }
 
@@ -920,21 +1170,23 @@ byId('use-java-vue').addEventListener('click', () => {
   byId('create-requirement').value = scenario.requirement;
   byId('create-requirement').focus();
 });
-byId('event-filter').addEventListener('change', () => {
-  for (const row of eventsList.children) row.hidden = !matchesEvent(row);
-  eventsList.scrollTop = 0;
-  renderEventEmpty();
+eventFilter.addEventListener('change', applyEventFilter);
+eventSearch.addEventListener('input', applyEventFilter);
+eventsList.addEventListener('scroll', updateTimelineLatest, { passive: true });
+byId('timeline-latest').addEventListener('click', () => {
+  eventsList.focus({ preventScroll: true });
+  eventsList.scrollTop = eventsList.scrollHeight;
+  updateTimelineLatest();
 });
 new ResizeObserver(fitSelectedCase).observe(caseList);
+new ResizeObserver(updateTimelineLatest).observe(eventsList);
 byId('create-form').addEventListener('submit', createCase);
 byId('review-form').addEventListener('input', storeEdits);
 byId('review-form').addEventListener('submit', updateCase);
 byId('run-case').addEventListener('click', startRun);
 byId('timeline-jump').addEventListener('click', (event) => {
   event.preventDefault();
-  const title = byId('events-title');
-  title.focus({ preventScroll: true });
-  title.scrollIntoView({ block: 'start', behavior: 'instant' });
+  focusTimeline();
 });
 byId('add-command').addEventListener('click', () => {
   const row = commandRow({ id: `command-${crypto.randomUUID()}`, label: '', program: '', phase: 'verify', args: [], timeoutMs: 120000 });

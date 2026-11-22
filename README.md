@@ -4,18 +4,18 @@
 
 ## 运行
 
-需要 Node.js 24、使用 ChatGPT 账号登录的 Codex CLI、OpenCode 1.19.6，以及供 Playwright 调用的 Chromium。Windows 可使用已安装的 Microsoft Edge 或 Google Chrome。在没有可用浏览器的环境里运行 `npx playwright install chromium`。
+需要 Node.js 24、使用 ChatGPT 账号登录的 Codex CLI，以及供 Playwright 调用的 Chromium。`npm ci` 会安装项目锁定的 OpenCode 1.19.6。也可以使用已安装的 Microsoft Edge 或 Google Chrome。在没有可用浏览器的环境里运行 `npx playwright install chromium`。
 
 ```powershell
 npm ci
 codex login status
-opencode --version
+npm exec --offline -- opencode --version
 npm start
 ```
 
-代码实现和只读审阅均使用 `gpt-6.2-sol`，推理强度为 `medium`。Codex 实现轮使用本机 CLI 登录，Windows 上使用 MXC 工作区沙箱。OpenCode 通过官方 OpenAI 接口认证。可以在启动评测台前用 `VIBE_BENCH_CODEX_BIN` 或 `VIBE_BENCH_OPENCODE_BIN` 指定可执行文件路径。[本地评测台](http://127.0.0.1:4317) · [Windows 沙箱文档](https://learn.chatgpt.com/docs/windows/windows-sandbox)
+代码实现和只读审阅均使用 `gpt-6-luna`，推理强度为 `medium`。Codex 实现轮使用本机 CLI 登录，Windows 上使用 MXC 工作区沙箱。OpenCode 通过官方 OpenAI 接口认证。可以在启动评测台前用 `VIBE_BENCH_CODEX_BIN` 或 `VIBE_BENCH_OPENCODE_BIN` 指定可执行文件路径。[本地评测台](http://127.0.0.1:4317) · [Windows 沙箱文档](https://learn.chatgpt.com/docs/windows/windows-sandbox)
 
-OpenCode 和审阅轮优先读取启动环境中的 `VIBE_BENCH_OPENAI_API_KEY`。Windows 用户也可在 `%LOCALAPPDATA%\VibeAgentBench\openai-api-key` 保存密钥。缺少项目密钥时，审阅轮使用本机 Codex CLI 登录。API 请求失败会显示在对应结果中。
+OpenCode 和审阅轮优先读取启动环境中的 `VIBE_BENCH_OPENAI_API_KEY`。也可以将密钥保存到本机文件，macOS 使用 `~/Library/Application Support/VibeAgentBench/openai-api-key`，Windows 使用 `%LOCALAPPDATA%\VibeAgentBench\openai-api-key`。缺少项目密钥时，审阅轮使用本机 Codex CLI 登录。API 请求失败会显示在对应结果中。
 
 在 GitHub Codespaces 开发时，可在仓库的 **Settings → Secrets and variables → Codespaces** 添加同名 Secret。新建或重启 Codespace 后，它会成为开发环境变量。 [GitHub Codespaces Secret 文档](https://docs.github.com/en/codespaces/managing-codespaces-for-your-organization/managing-development-environment-secrets-for-your-repository-or-organization)
 
@@ -26,11 +26,11 @@ OpenCode 和审阅轮优先读取启动环境中的 `VIBE_BENCH_OPENAI_API_KEY`�
 1. 打开 [本地评测台](http://127.0.0.1:4317)，填写 OpenCode 要处理的本机项目目录绝对路径和实际需求。默认项目是后台任务样例。
 2. 生成用例后可检查项目文件、编辑任务提示词、设置独立验收命令，再审核通过。目录扫描会识别 Node.js、Go 和 Rust 的常见验证命令；其他项目可以填写已有命令。内置样例使用固定的六项业务验收。
 3. 启动评测执行当前审核版本。OpenCode 在所选目录的临时副本中修改代码，验收命令从这个副本运行。启动前请检查命令及所选项目中的脚本。每次启动按当时的目录内容建立项目快照。
-4. 运行中可查看阶段状态、工具调用和命令输出。结束后可打开代码差异、验收日志、截图及建议。运行链接可回看，运行历史与事件序列保存在磁盘。原有四组实验入口位于 [Skill 对照](http://127.0.0.1:4317/benchmark)。
+4. 运行流程用同一时间轴显示五个阶段的起点和耗时，并实时更新最新事件及检查进度。OpenCode 实现轮的执行上限为 10 分钟。点击阶段可筛选时间线，也可搜索事件正文、详情和证据文件名。「规范与产出」把规范读取、编辑事件、代码差异和独立验收放在一起，并可定位实际记录。运行历史与事件序列保存在磁盘。 [Skill 对照](http://127.0.0.1:4317/benchmark)
 
 ## 四组对照
 
-两个 Agent 各运行一次有目标 Skill 和一次无目标 Skill。每组使用独立工作区，收到完全相同且不点名 Skill 的任务提示词。两条 Agent 队列并行，同一 Agent 的两种条件串行且两条队列顺序相反。每次报告记录原始提示词、提示词摘要、起始样例摘要，以及目标 Skill 是否存在。四组各执行一次，结果反映本次观察。批次页面显示自动选用、已验证读取和六项业务验收，可逐组查看轨迹。[Coder Eval 的 OpenCode 接法](https://github.com/UiPath/coder_eval/blob/main/docs/agents/OPENCODE.md) · [BenchFlow 的 Skill 对照](https://www.benchflow.ai/docs/benchflow/evaluate/skills)
+两个 Agent 各运行一次有目标 Skill 和一次无目标 Skill。每组使用独立工作区，收到完全相同且不点名 Skill 的任务提示词。两条 Agent 队列并行，同一 Agent 的两种条件串行且两条队列顺序相反。对照页按实际执行顺序显示各轮状态和进度，点击组名可打开该轮的运行流程。每次报告记录原始提示词、提示词摘要、起始样例摘要，以及目标 Skill 是否存在。四组各执行一次，结果反映本次观察。对照表显示自动选用、已验证读取和六项业务验收。[Coder Eval 的 OpenCode 接法](https://github.com/UiPath/coder_eval/blob/main/docs/agents/OPENCODE.md) · [BenchFlow 的 Skill 对照](https://www.benchflow.ai/docs/benchflow/evaluate/skills)
 
 ## Java + Vue 场景及主题素材
 

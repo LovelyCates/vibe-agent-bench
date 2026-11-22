@@ -2,7 +2,7 @@
 
 ## 范围
 
-在本机评测「后台任务列表增加状态筛选」。实现轮可使用 Codex CLI 或 OpenCode 1.19.6，支持两个 Agent 各跑有目标 Skill 和无目标 Skill 的四组对照。实现和独立审阅均使用 `gpt-6.2-sol`、`medium`。Codex 使用本机 ChatGPT 登录，OpenCode 和配置了项目密钥的审阅轮使用官方 OpenAI API。每组创建独立的临时项目，并保留结果、运行轨迹和代码差异。页面支持发起单轮和对照、回看历史与证据、发起复测。
+在本机评测「后台任务列表增加状态筛选」。实现轮可使用 Codex CLI 或 OpenCode 1.19.6，支持两个 Agent 各跑有目标 Skill 和无目标 Skill 的四组对照。实现和独立审阅均使用 `gpt-6-luna`、`medium`。Codex 使用本机 ChatGPT 登录，OpenCode 和配置了项目密钥的审阅轮使用官方 OpenAI API。每组创建独立的临时项目，并保留结果、运行轨迹和代码差异。页面支持发起单轮和对照、回看历史与证据、发起复测。
 
 ## 样例需求
 
