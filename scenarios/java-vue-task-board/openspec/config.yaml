@@ -1,0 +1,7 @@
+schema: spec-driven
+
+context: |
+  运维任务看板使用 JDK 17 HTTP 服务、Vue 3 和 Vite。
+  当前的关键字搜索、排序和 HTTP 响应结构由 task-board 能力定义。
+  项目 README 记录本地启动方式和验收约定。
+  允许新增回归测试，现有独立验收测试保持原样。

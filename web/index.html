@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="对照 Codex 和 OpenCode 在有无 Skill 两种条件下的实现和测试结果。">
+  <title>Vibe Agent Bench · 本地评测台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workbench-highlight.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div><strong>Vibe Agent Bench</strong><span>本地评测台</span></div>
+      </div>
+      <nav class="legacy-nav" aria-label="评测导航">
+        <a class="header-nav" href="/">用例工作台</a>
+        <a class="header-nav" href="#history-title">运行记录</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="case" aria-labelledby="case-title">
+      <div class="case-copy">
+        <p class="case-label">评测场景</p>
+        <h1 id="case-title">后台任务列表增加状态筛选</h1>
+        <p class="case-description">用同一任务评测 Codex 和 OpenCode，查看 Skill 证据、功能验收和测试辨别力。</p>
+      </div>
+      <div class="case-controls">
+        <button class="button button-primary" id="run-experiment" type="button">运行四组对照</button>
+        <p class="mode-help">两种 Agent 各测有 Skill 和无 Skill。</p>
+      </div>
+    </section>
+    <section class="panel launch" aria-labelledby="single-run-title">
+      <h2 id="single-run-title">单次评测</h2>
+      <form class="launch-form" id="single-run-form">
+        <label>Agent
+          <select id="agent-mode" name="mode">
+            <option value="codex">Codex</option>
+            <option value="opencode">OpenCode v1.19.6</option>
+          </select>
+        </label>
+        <label>Skill
+          <select id="skill-mode" name="skillMode">
+            <option value="with">有 Skill</option>
+            <option value="without">无 Skill</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button class="button button-accent" id="run-single" type="submit">开始评测</button>
+          <button class="button button-secondary" id="run-demo" type="button" title="演示使用参考实现，无模型调用。">运行演示</button>
+        </div>
+      </form>
+    </section>
+    <p class="notice" id="notice" role="alert" hidden></p>
+    <section class="panel comparison" id="comparison" aria-labelledby="comparison-title" hidden>
+      <div class="panel-heading">
+        <div>
+          <h2 id="comparison-title" tabindex="-1">四组对照</h2>
+          <p id="comparison-meta"></p>
+        </div>
+        <div id="comparison-status" role="status"></div>
+      </div>
+      <div class="comparison-scroll" role="region" aria-label="Agent 和 Skill 对照结果" tabindex="0">
+        <table class="comparison-table" id="comparison-table"></table>
+      </div>
+      <p class="comparison-help"><span class="comparison-swipe">横向滑动可查看全部验收项和报告。</span>未观察到表示记录中无对应事件。未知表示现有证据不足。</p>
+    </section>
+    <div class="workspace">
+      <div class="results">
+        <section class="panel" aria-labelledby="report-title">
+          <div class="panel-heading">
+            <div>
+              <h2 id="report-title" tabindex="-1">评测结果</h2>
+              <p id="report-meta">每次运行保留独立的检查证据。</p>
+            </div>
+            <div class="report-actions" id="report-actions"></div>
+          </div>
+          <p class="sr-only" id="live-status" role="status"></p>
+          <div id="progress"></div>
+          <ul class="checks" id="checks" aria-label="检查项目"></ul>
+        </section>
+        <section class="panel" aria-labelledby="advice-title">
+          <div class="panel-heading">
+            <div><h2 id="advice-title">修复建议与复测</h2></div>
+            <div id="advice-status"></div>
+          </div>
+          <div class="advice-body" id="advice"></div>
+        </section>
+      </div>
+      <aside class="panel history" aria-labelledby="history-title">
+        <div class="panel-heading">
+          <div><h2 id="history-title">运行记录</h2><p id="history-count"></p></div>
+        </div>
+        <div id="history"></div>
+      </aside>
+    </div>
+  </main>
+
+  <dialog id="artifact-dialog" aria-labelledby="artifact-title">
+    <div class="artifact-header">
+      <div class="artifact-heading">
+        <h2 id="artifact-title">证据</h2>
+        <p id="artifact-filename" class="mono"></p>
+      </div>
+      <button class="button button-secondary" id="close-artifact" type="button" autofocus>关闭</button>
+    </div>
+    <div class="artifact-content" id="artifact-content"></div>
+  </dialog>
+</body>
+</html>

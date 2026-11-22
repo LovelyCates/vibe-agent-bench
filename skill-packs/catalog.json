@@ -1,0 +1,176 @@
+[
+  {
+    "id": "superpowers",
+    "title": "Superpowers",
+    "role": "workflow",
+    "version": "v7.0.2",
+    "repository": "obra/superpowers",
+    "revision": "22f0b463e7a5e579904dd6211a520321035526f7",
+    "source": "https://github.com/obra/superpowers/tree/22f0b463e7a5e579904dd6211a520321035526f7",
+    "license": "MIT",
+    "licensePath": "superpowers/LICENSE",
+    "skills": [
+      {
+        "name": "brainstorming",
+        "path": "superpowers/skills/brainstorming/SKILL.md",
+        "sha256": "2c9ca71f94886f9ca9f4aef055f7cafb3e1a9bdf3aeebf8f4cb547c69405d207"
+      },
+      {
+        "name": "diagnosing-superpowers",
+        "path": "superpowers/skills/diagnosing-superpowers/SKILL.md",
+        "sha256": "3143de8695c5a2d63e8b1675f33837578076f464deb127c2ebdd0b46fceef886"
+      },
+      {
+        "name": "dispatching-parallel-agents",
+        "path": "superpowers/skills/dispatching-parallel-agents/SKILL.md",
+        "sha256": "1968923066f3b707eb01d1992cdf4c42284c3855f70253b9cd5000ff45fca13c"
+      },
+      {
+        "name": "executing-plans",
+        "path": "superpowers/skills/executing-plans/SKILL.md",
+        "sha256": "deaf176fa179827e80f2ea3101db3ea90fdf562ebef340eba761e4687940f5f5"
+      },
+      {
+        "name": "finishing-a-development-branch",
+        "path": "superpowers/skills/finishing-a-development-branch/SKILL.md",
+        "sha256": "8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65"
+      },
+      {
+        "name": "receiving-code-review",
+        "path": "superpowers/skills/receiving-code-review/SKILL.md",
+        "sha256": "091df1629510af1b92fc4abd6f96732ebedb4cb2c0f3457e8f2740b0504a2438"
+      },
+      {
+        "name": "requesting-code-review",
+        "path": "superpowers/skills/requesting-code-review/SKILL.md",
+        "sha256": "2180e14a448e9410bec88e6646a2d1f0ce7fdd58de27388c1e052e929679d2bc"
+      },
+      {
+        "name": "subagent-driven-development",
+        "path": "superpowers/skills/subagent-driven-development/SKILL.md",
+        "sha256": "1baf70e307bde682c462513c86116333f1f066168c6710f45145bf5f0b00828d"
+      },
+      {
+        "name": "systematic-debugging",
+        "path": "superpowers/skills/systematic-debugging/SKILL.md",
+        "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"
+      },
+      {
+        "name": "test-driven-development",
+        "path": "superpowers/skills/test-driven-development/SKILL.md",
+        "sha256": "64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d"
+      },
+      {
+        "name": "using-git-worktrees",
+        "path": "superpowers/skills/using-git-worktrees/SKILL.md",
+        "sha256": "8cfb86f121269e8f7f12361e6795c4f6738828340e28964c9229d365666c9edd"
+      },
+      {
+        "name": "using-superpowers",
+        "path": "superpowers/skills/using-superpowers/SKILL.md",
+        "sha256": "82c5c8866ad7f5dd4440ce66bd7806ba48a2f13771beae5cf112e53f08fe36ba"
+      },
+      {
+        "name": "verification-before-completion",
+        "path": "superpowers/skills/verification-before-completion/SKILL.md",
+        "sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3"
+      },
+      {
+        "name": "writing-plans",
+        "path": "superpowers/skills/writing-plans/SKILL.md",
+        "sha256": "a6c67c1900064347c2a329990dd3c555657c51c3ec53b259a08aa01a2c26139a"
+      },
+      {
+        "name": "writing-skills",
+        "path": "superpowers/skills/writing-skills/SKILL.md",
+        "sha256": "8cb3ac68c6d8c4bb46886b998b09af7989643cab8bd0e46ee86dd62e64546bbe"
+      }
+    ]
+  },
+  {
+    "id": "openspec",
+    "title": "OpenSpec",
+    "role": "workflow",
+    "version": "2.1.1",
+    "repository": "Fission-AI/OpenSpec",
+    "revision": "0c737dc1b543249b38b0f4716816fcf493d894dd",
+    "projectTemplate": "openspec/project",
+    "cli": {
+      "package": "@fission-ai/openspec",
+      "version": "2.1.1",
+      "entrypoint": "node_modules/@fission-ai/openspec/bin/openspec.js",
+      "integrity": "sha512-GQv1xU4uLrTVJ6MfOKNIxo/BgEk+e8C/XBmjTfzd/W3LNh4v2UMAsfTdn8mjHdjDA/KjfGstwUhZedQW4hdcZQ=="
+    },
+    "source": "https://github.com/Fission-AI/OpenSpec/tree/0c737dc1b543249b38b0f4716816fcf493d894dd",
+    "license": "MIT",
+    "licensePath": "openspec/LICENSE",
+    "skills": [
+      {
+        "name": "openspec-apply-change",
+        "path": "openspec/skills/openspec-apply-change/SKILL.md",
+        "sha256": "a8933b263ab01b4ce0a04ac805bd5321cadab78c84b6717b8617fea7eb2dc7dc"
+      },
+      {
+        "name": "openspec-archive-change",
+        "path": "openspec/skills/openspec-archive-change/SKILL.md",
+        "sha256": "8ea5eb23ac050a781616c7b951228c9763f62fccb7e0a6537f286679f1c01a08"
+      },
+      {
+        "name": "openspec-explore",
+        "path": "openspec/skills/openspec-explore/SKILL.md",
+        "sha256": "8eb7074d34277cf09e630ebd189a127154b8007d48445824b2c4c676806d501a"
+      },
+      {
+        "name": "openspec-propose",
+        "path": "openspec/skills/openspec-propose/SKILL.md",
+        "sha256": "e353e74472fdef44af4af2c646348085b5b87df60efe06949ca401ff00c972e6"
+      },
+      {
+        "name": "openspec-sync-specs",
+        "path": "openspec/skills/openspec-sync-specs/SKILL.md",
+        "sha256": "75556d2ca69892525698a0c681e0c3deead1e25f3b7b9be5449eaaf1621f026b"
+      },
+      {
+        "name": "openspec-update-change",
+        "path": "openspec/skills/openspec-update-change/SKILL.md",
+        "sha256": "ca7ef061078b2260be47c2654e7df29b4c81ac1173dc73cbd565c3ea40879e87"
+      }
+    ]
+  },
+  {
+    "id": "java-development",
+    "title": "Java Development",
+    "role": "standard",
+    "version": "f10fdb8b2660",
+    "repository": "github/awesome-copilot",
+    "revision": "f10fdb8b2660ce85c98f220b2f1ca24653768a5c",
+    "source": "https://github.com/github/awesome-copilot/tree/f10fdb8b2660ce85c98f220b2f1ca24653768a5c",
+    "license": "MIT",
+    "licensePath": "java-development/LICENSE",
+    "skills": [
+      {
+        "name": "java-development",
+        "path": "java-development/skills/java-development/SKILL.md",
+        "sha256": "80a0915669a4df7a3c181ff03ed8122fccc00ee2079031dbdc7d6114fbe7cf0d"
+      }
+    ]
+  },
+  {
+    "id": "vue-best-practices",
+    "title": "Vue Best Practices",
+    "role": "standard",
+    "version": "19.1.0",
+    "repository": "vuejs-ai/skills",
+    "revision": "198f0cd8f7f9c0a3d9b566ccc16de6677519ee78",
+    "source": "https://github.com/vuejs-ai/skills/tree/198f0cd8f7f9c0a3d9b566ccc16de6677519ee78",
+    "license": "MIT",
+    "licensePath": "vue-best-practices/LICENSE",
+    "skills": [
+      {
+        "name": "vue-best-practices",
+        "path": "vue-best-practices/skills/vue-best-practices/SKILL.md",
+        "sha256": "3a601da4b2cc46b1712fcedb1ce434f0c263e29c2a8193ccf84dcbd0b7c03378"
+      }
+    ]
+  }
+]

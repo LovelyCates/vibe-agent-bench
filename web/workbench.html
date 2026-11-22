@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fbf6f7">
+  <meta name="description" content="从本地项目生成 OpenCode 用例，审核后执行并查看每一步的证据。">
+  <title>用例工作台 · Vibe Agent Bench</title>
+  <link rel="stylesheet" href="/workbench.css">
+  <link rel="stylesheet" href="/workbench-highlight.css">
+  <script type="module" src="/workbench.js"></script>
+</head>
+<body>
+  <svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10Zm0 0v7h7M8 14h8m-8 3h5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L19 7"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7Z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M2 12h5l3-7 4 14 3-7h5"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 2 6M3 7v5h5m4-4v4l3 2"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5Zm-9 9 9 5 9-5m-18 4 9 5 9-5"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M13 5h6v6m0-6-9 9m9-1v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-desk" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M10 6h10M10 12h10M10 18h10M4 6l1 1 2-2m-3 7 1 1 2-2m-3 7 1 1 2-2"/></symbol>
+  </svg>
+
+  <header class="bar">
+    <div class="outer bar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-name"><strong>灵伴研习社</strong><span>Vibe Agent Bench</span></span>
+      </a>
+      <nav class="top-nav" aria-label="工作区">
+        <a href="/" id="workspace-link" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-desk"/></svg>工作台</a>
+        <a href="/#history" id="history-link"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>运行记录</a>
+        <a href="/benchmark">对照实验<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </nav>
+      <span class="connection" id="connection" data-state="pending"><i></i><span id="connection-text">连接中</span></span>
+    </div>
+  </header>
+
+  <main class="outer main">
+    <section class="intro workshop-intro" aria-labelledby="page-title" id="workspace-intro">
+      <div>
+        <h1 id="page-title" tabindex="-1"><span class="agent-name">OpenCode</span> 用例工作台</h1>
+        <p>从本地项目生成用例，审核后执行，逐项查看验收证据。</p>
+      </div>
+      <div class="companion-art"><img src="/workbench-mascot.webp" alt="" title="爱弥斯主题插图 · 个人同人" width="312" height="312"></div>
+      <button class="button primary" id="new-case" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>新建用例</button>
+    </section>
+
+    <section class="intro" id="history-intro" aria-labelledby="history-title" hidden>
+      <div>
+        <h1 id="history-title" tabindex="-1">运行记录</h1>
+        <p>打开一次评测，查看当时的用例版本和执行证据。</p>
+      </div>
+      <a class="button secondary" href="/benchmark#history-title">查看对照实验记录<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+    </section>
+
+    <p class="notice" id="notice" role="alert" hidden></p>
+    <div class="desk" id="workspace">
+      <aside class="panel shelf" aria-labelledby="cases-title">
+        <div class="shelf-heading"><h2 id="cases-title"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>项目用例</h2><span id="case-scroll-hint" class="case-scroll-hint" hidden>左右滑动查看更多</span><span id="case-count" class="count"></span></div>
+        <div id="case-list" class="case-list"><p class="empty-small">正在读取项目用例…</p></div>
+        <div class="shelf-footer"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span>本地项目目录</span></div>
+      </aside>
+
+      <div class="desk-main">
+        <ol class="flow panel" id="flow" aria-label="用例流程">
+          <li id="flow-create" data-state="current" aria-current="step"><span class="flow-number">1</span><span>生成用例</span></li>
+          <li id="flow-review" data-state="pending"><span class="flow-number">2</span><span>审核用例</span></li>
+          <li id="flow-run" data-state="pending"><span class="flow-number">3</span><span>执行与取证</span></li>
+        </ol>
+
+        <section class="panel new-panel" id="create-panel" aria-labelledby="create-title" hidden>
+          <div class="panel-heading">
+            <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></span>
+            <div><h2 id="create-title">从项目生成用例</h2><p>输入 OpenCode 要处理的项目目录和验收要求。</p></div>
+          </div>
+          <form id="create-form" class="form">
+            <div class="project-input">
+              <label class="field" for="project-dir"><span>本地项目目录</span><input id="project-dir" name="projectDir" class="mono" autocomplete="off" spellcheck="false" placeholder="C:\Projects\my-app" required></label>
+              <div class="project-shortcuts">
+                <button class="text-button" id="use-sample" type="button" hidden>使用内置样例目录</button>
+                <button class="text-button" id="use-java-vue" type="button" hidden>使用 Java + Vue 场景</button>
+              </div>
+            </div>
+            <label class="field" for="create-title-input"><span>用例标题 <small>可选</small></span><input id="create-title-input" name="title" maxlength="120" placeholder="例如：后台任务列表增加状态筛选"></label>
+            <label class="field" for="create-requirement"><span>需求与验收目标 <small>内置样例可留空</small></span><textarea id="create-requirement" rows="4" name="requirement" maxlength="8000" placeholder="说明要改动的行为，以及怎样才算通过。"></textarea></label>
+            <div class="form-actions">
+              <button class="button secondary" id="cancel-create" type="button">取消</button>
+              <button class="button primary" id="generate" type="submit">生成审核草稿<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel case-panel" id="case-panel" aria-labelledby="case-title" hidden>
+          <div class="case-heading">
+            <div class="case-meta"><span class="agent-tag"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>OpenCode</span><span class="badge" id="case-state"></span><span class="version" id="case-version"></span></div>
+            <h2 id="case-title" tabindex="-1"></h2>
+            <div class="project-path" id="case-project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="case-path" class="mono"></span></div>
+          </div>
+          <div class="tabs" role="tablist" aria-label="审核用例">
+            <button type="button" class="tab" role="tab" id="tab-spec" aria-controls="content-spec" aria-selected="true">任务与提示词</button>
+            <button type="button" class="tab" role="tab" id="tab-commands" aria-controls="content-commands" aria-selected="false" tabindex="-1">检查与命令 <span id="command-count" class="count"></span></button>
+            <button type="button" class="tab" role="tab" id="tab-skills" aria-controls="content-skills" aria-selected="false" tabindex="-1">Skill 配置</button>
+            <button type="button" class="tab" role="tab" id="tab-files" aria-controls="content-files" aria-selected="false" tabindex="-1">项目文件</button>
+          </div>
+          <form id="review-form" novalidate>
+            <div class="tab-content" role="tabpanel" id="content-spec" aria-labelledby="tab-spec">
+              <label class="field" for="review-title"><span>用例标题</span><input id="review-title" name="title" maxlength="120" required></label>
+              <label class="field" for="review-requirement"><span>需求与验收目标</span><textarea id="review-requirement" name="requirement" rows="3" maxlength="8000"></textarea></label>
+              <label class="field" for="review-prompt"><span>OpenCode 提示词</span><textarea id="review-prompt" name="prompt" rows="5" maxlength="16000" class="mono" spellcheck="false"></textarea></label>
+            </div>
+            <div class="tab-content" role="tabpanel" id="content-commands" aria-labelledby="tab-commands" hidden>
+              <div id="sample-checks" hidden></div>
+              <p class="field-help" id="command-help">准备命令在 OpenCode 运行前执行，验证命令在它完成后执行。每行填写一个参数。</p>
+              <div id="commands" class="commands"></div>
+              <button class="button secondary compact" id="add-command" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>添加命令</button>
+            </div>
+            <div class="tab-content" role="tabpanel" id="content-skills" aria-labelledby="tab-skills" hidden>
+              <label class="field skill-profile-field" for="review-skill-profile"><span>Skill 配置</span><select id="review-skill-profile" name="skillProfile" aria-describedby="skill-profile-help"></select></label>
+              <p class="field-help" id="skill-profile-help"></p>
+              <ul class="skill-pack-list" id="skill-profile-packs"></ul>
+            </div>
+            <div class="tab-content" role="tabpanel" id="content-files" aria-labelledby="tab-files" hidden>
+              <p class="field-help">生成用例时识别到的项目文件。</p>
+              <ul class="source-files" id="source-files"></ul>
+            </div>
+            <div class="review-footer">
+              <p id="review-hint"></p>
+              <div class="form-actions">
+                <button class="button secondary compact" id="save-case" type="submit" value="save">保存草稿</button>
+                <button class="button secondary compact" id="approve-case" type="submit" value="approve"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>审核通过</button>
+                <button class="button primary compact" id="run-case" type="button" disabled><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>运行用例</span></button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel execution" id="execution" aria-labelledby="execution-title" hidden>
+          <div class="panel-heading">
+            <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg></span>
+            <div><h2 id="execution-title" tabindex="-1">执行与证据</h2><p id="execution-meta">执行后会逐项显示状态、耗时和证据。</p></div>
+            <div id="execution-state" class="panel-action"></div>
+          </div>
+          <div class="execution-empty" id="execution-empty"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><p>运行已审核的用例后，检查结果会出现在这里。</p></div>
+          <div class="execution-body" id="execution-body" hidden>
+            <div class="progress-area">
+              <div class="progress-header"><strong id="progress-text"></strong><span id="progress-count"></span><a class="timeline-jump" id="timeline-jump" href="#events-title">跳到时间线</a></div>
+              <progress id="progress" aria-label="检查进度" value="0" max="1"></progress>
+            </div>
+            <p class="sr-only" id="execution-live" role="status"></p>
+            <div class="execution-grid">
+              <section class="execution-lane checks-lane" aria-labelledby="checks-title">
+                <h3 id="checks-title"><span><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>检查步骤</span></h3>
+                <ol class="checks" id="checks"></ol>
+              </section>
+              <section class="execution-lane events-lane" aria-labelledby="events-title">
+                <div class="timeline-header">
+                  <h3 id="events-title" tabindex="-1"><span><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>事件时间线</span><span class="event-live" id="event-live" hidden><i></i>实时更新</span></h3>
+                  <select class="timeline-filter" id="event-filter" aria-label="筛选执行事件">
+                    <option value="all">全部</option>
+                    <option value="agent">OpenCode 工具</option>
+                    <option value="skill">Skill</option>
+                    <option value="verify">独立验收</option>
+                    <option value="output">命令输出</option>
+                  </select>
+                </div>
+                <p class="empty-small" id="events-empty">等待执行事件…</p>
+                <ol class="events" id="events" aria-labelledby="events-title" tabindex="0"></ol>
+              </section>
+            </div>
+            <section class="advice" id="advice" aria-labelledby="advice-title" hidden>
+              <div class="advice-heading"><h3 id="advice-title">修复建议</h3><div id="advice-state"></div></div>
+              <div id="advice-content"></div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <section class="panel history-panel" id="history" aria-labelledby="history-list-title" hidden>
+      <div class="panel-heading"><span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg></span><div><h2 id="history-list-title">单用例评测</h2><p id="history-count"></p></div></div>
+      <div class="history-list" id="history-list"></div>
+    </section>
+    <footer class="page-footer"><a href="/benchmark">旧版评测与演示<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a></footer>
+  </main>
+
+  <dialog class="artifact-dialog" id="artifact-dialog" aria-labelledby="artifact-title">
+    <div class="artifact-header">
+      <span class="section-icon"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span>
+      <div class="artifact-heading"><h2 id="artifact-title">证据</h2><p id="artifact-file" class="mono"></p></div>
+      <a class="button secondary compact" id="artifact-raw" target="_blank" rel="noopener">原始文件<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      <button type="button" class="icon-button" id="close-artifact" aria-label="关闭证据" autofocus><svg class="icon" aria-hidden="true"><use href="#i-cross"/></svg></button>
+    </div>
+    <div class="artifact-content" id="artifact-content"></div>
+  </dialog>
+</body>
+</html>

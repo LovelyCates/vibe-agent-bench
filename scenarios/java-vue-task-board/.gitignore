@@ -1,0 +1,6 @@
+node_modules/
+.bench-results/
+dist/
+target/
+test-results/
+playwright-report/

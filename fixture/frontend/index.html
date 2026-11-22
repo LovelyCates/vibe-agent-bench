@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>后台任务</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+  <main>
+    <h1>后台任务</h1>
+    <table aria-label="任务列表">
+      <thead><tr><th scope="col">编号</th><th scope="col">任务</th><th scope="col">状态</th></tr></thead>
+      <tbody id="task-list"></tbody>
+    </table>
+    <p id="empty-state" role="status" hidden>没有符合条件的任务。</p>
+    <p id="load-error" role="alert" hidden>任务加载失败。</p>
+  </main>
+</body>
+</html>

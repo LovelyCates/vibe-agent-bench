@@ -1,0 +1,24 @@
+.code-view { margin: 0; padding: 9px 0; overflow: auto; min-width: 0; max-height: 68vh; color: #e4e1f0; background: #211c31; border: 1px solid #342b49; border-radius: 8px; font: 12px/1.65 "Cascadia Code", Consolas, "SFMono-Regular", monospace; tab-size: 2; white-space: pre; }
+.code-view code { display: block; width: max-content; min-width: 100%; font: inherit; }
+.code-line { display: grid; grid-template-columns: 42px minmax(0,1fr); min-width: max-content; padding-inline-end: 12px; }
+.line-no { padding-right: 11px; text-align: right; color: #aaa1bd; user-select: none; }
+.code-line[data-line="added"] { color: #b9f4cd; background: #233a36; }
+.code-line[data-line="removed"] { color: #ffd3dc; background: #442d3b; }
+.code-line[data-line="hunk"] { color: #c4b7ff; background: #30274c; }
+.code-line[data-line="meta"] { color: #dbc9fc; }
+.code-line[data-line="error"] { color: #ffb5c6; background: #452c39; }
+.code-line[data-line="success"] { color: #a5e7b9; }
+.code-line[data-line="warning"] { color: #f6d58d; }
+.token.keyword { color: #d6b6ff; }
+.token.key, .token.function { color: #a9d8ff; }
+.token.string { color: #b0e9b5; }
+.token.number, .token.literal { color: #ffd197; }
+.token.comment { color: #b3a8c6; font-style: italic; }
+.token.punctuation { color: #ccc2df; }
+.code-line:is([data-line="added"],[data-line="removed"]) .token { color: inherit; }
+.code-notice { color: #625d70; font-size: 12px; margin: 6px 0 0; }
+
+@media (max-width: 475px) {
+  .code-line { grid-template-columns: 32px minmax(0,1fr); }
+  .line-no { padding-right: 7px; }
+}

@@ -1,0 +1,6 @@
+:root { color-scheme: light; font: 16px system-ui, sans-serif; color: #202631; background: #f4f6fa; }
+body { margin: 0; }
+main { margin: 48px auto; width: min(740px, calc(100% - 40px)); }
+table { width: 100%; border-collapse: collapse; background: white; }
+th, td { text-align: left; padding: 14px 16px; border-bottom: 1px solid #dce0e8; }
+th { background: #e8edf7; }
